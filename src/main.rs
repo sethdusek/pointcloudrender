@@ -6,10 +6,16 @@ use glium::{
     texture::{CompressedSrgbTexture2d, SrgbTexture2d, UnsignedTexture2d},
     uniform,
     uniforms::{ImageUnit, ImageUnitFormat, UniformBuffer},
-    IndexBuffer, Program, Rect, Surface, Texture2d, VertexBuffer,
+    DrawParameters, IndexBuffer, Program, Rect, Surface, Texture2d, VertexBuffer,
 };
-use nalgebra::{Matrix4, Vector3};
-fn get_image() -> Result<(ImageBuffer<Rgba<u8>, Vec<u8>>, ImageBuffer<Luma<u8>, Vec<u8>>), Box<dyn std::error::Error>> {
+use nalgebra::{Matrix4, Perspective3, Point3, Vector3};
+fn get_image() -> Result<
+    (
+        ImageBuffer<Rgba<u8>, Vec<u8>>,
+        ImageBuffer<Luma<u8>, Vec<u8>>,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let mut args = std::env::args().skip(1);
     let img_path = args.next().unwrap();
     let depth_path = args.next().unwrap();
@@ -60,9 +66,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vertices.push(Vertex {
                 position: [
                     (x as f32 / dims.0 as f32) * 2.0 - 1.0,
-                    // Top of the screen is +1 in OpenGL. Thus we want the first row of the image to be at (..., 1, ...) and the last row to be (..., -1, ...)
+                    // Top of the screen is +1 in OpenGL
                     (y as f32 / dims.1 as f32) * -2.0 + 1.0,
-                    ((c2.0[0] - min_depth) as f32 / max_depth) * -2.0 + 1.0
+                    ((c2.0[0] - min_depth) as f32 / max_depth) * -2.0 + 1.0,
                 ],
                 color: [
                     c1.0[0] as f32 / 255.0,
@@ -73,43 +79,110 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }
     }
+    dbg!(vertices
+        .iter()
+        .map(|v| float_ord::FloatOrd(v.position[2]))
+        .max()
+        .unwrap());
+    dbg!(vertices
+        .iter()
+        .map(|v| float_ord::FloatOrd(v.position[2]))
+        .min()
+        .unwrap());
 
+    let mut eye = Point3::new(0.0f32, 0.0, 1.0);
+    let mut look_at = Point3::new(0.0, 0.0, -0.1);
     let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
-    let mut translation = Vector3::new(0.0f32, 0.0, 0.0);
-    let mut view = Matrix4::new_translation(&translation);
+    let mut view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+    // TODO: figure out projection. This is just a placeholder
+    let mut projection = Matrix4::<f32>::identity();
+    let fov = 90.0;
+    //let mut projection = Perspective3::new(
+    //     dims.0 as f32 / dims.1 as f32,
+    //     fov / (2.0 * std::f32::consts::PI),
+    //     0.0,
+    //     999.0,
+    // );
+
+    // don't think we even need this. but as you can tell by all the other commented out projection stuff im losing my sanity
+    let mut projection = Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 999.0);
 
     events_loop.run(move |e, _, ctrl| match e {
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('a'),
+            ..
+        } => {
+            eye.x -= 0.01;
+            view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('d'),
+            ..
+        } => {
+            eye.x += 0.01;
+            view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+        }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('w'),
             ..
         } => {
-            translation.z -= 0.01;
-            view = Matrix4::new_translation(&translation);
+            eye.z += 0.01;
+            view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('s'),
+            ..
+        } => {
+            eye.z -= 0.01;
+            view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('q'),
+            ..
+        } => {
+            //projection.set_fovy(projection.fovy() - 0.01);
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('e'),
+            ..
+        } => {
+            //projection.set_fovy(projection.fovy() + 0.01);
+        }
+
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => ctrl.set_exit_with_code(0),
 
         Event::MainEventsCleared => {
-            dbg!("Drawing");
+            // dbg!(projection);
+            // println!("Enter args: ");
+            // let mut buf = String::new();
+            // std::io::stdin().read_line(&mut buf).unwrap();
+            // let (znear, zfar) = buf.trim().split_once(" ").unwrap();
+            //projection = Matrix4::new_perspective(dims.0 as f32 / dims.1 as f32, 45.0, znear.parse::<f32>().unwrap(), zfar.parse::<f32>().unwrap());
             let mut target = display.draw();
-            target.clear_color(0.0, 0.0, 0.0, 0.0);
+            target.clear_depth(1.0);
+            target.clear_color(0.0, 0.0, 0.0, 1.0);
 
             let uniforms = uniform! {
-                view: *view.as_ref()
+                view: *view.as_ref(),
+                projection: *projection.as_ref()
             };
+            let mut draw_options = DrawParameters::default();
+            draw_options.depth.test = glium::draw_parameters::DepthTest::IfLessOrEqual;
+            draw_options.depth.write = true;
             target
                 .draw(
                     &vertex_buffer,
                     &glium::index::NoIndices(glium::index::PrimitiveType::Points),
                     &program,
                     &uniforms,
-                    &Default::default(),
+                    &draw_options,
                 )
                 .unwrap();
             target.finish().unwrap();
-        },
+        }
         _ => {}
     });
 }
