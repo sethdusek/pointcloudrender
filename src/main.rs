@@ -182,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..
         } => {
             renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(-0.01, 0.0, 0.0));
-            changed = true;
+            //changed = true;
             //renderer.view_params.set_look_at(renderer.view_params.look_at + Vector3::new(-0.01, 0.0, 0.0));
         }
         Event::WindowEvent {
@@ -190,7 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..
         } => {
             renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(0.01, 0.0, 0.0));
-            changed = true;
+            //changed = true;
             // eye.x += 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
@@ -200,13 +200,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             // eye.z += 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
-            changed = true;
+            //changed = true;
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('s'),
             ..
         } => {
-            changed = true;
+            //changed = true;
             // eye.z -= 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
