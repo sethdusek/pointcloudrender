@@ -3,7 +3,7 @@ use image::{io::Reader as ImageReader, GrayImage, ImageBuffer, Luma, Rgb, Rgba};
 use glium::{
     glutin::event::{Event, WindowEvent},
     implement_vertex,
-    texture::{CompressedSrgbTexture2d, SrgbTexture2d, UnsignedTexture2d},
+    texture::{CompressedSrgbTexture2d, SrgbTexture2d, UnsignedTexture2d, RawImage2d},
     uniform,
     uniforms::{ImageUnit, ImageUnitFormat, UniformBuffer},
     Display, DrawParameters, IndexBuffer, Program, Rect, Surface, Texture2d, VertexBuffer,
@@ -144,6 +144,15 @@ impl Renderer {
             .unwrap();
         target.finish().unwrap();
     }
+    fn save_screenshot(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let image: RawImage2d<'_, u8> = self.display.read_front_buffer()?;
+        dbg!(image.width, image.height);
+        let image_buffer = ImageBuffer::from_raw(image.width, image.height, image.data.into_owned()).unwrap();
+        let image = image::DynamicImage::ImageRgba8(image_buffer).flipv();
+        image.save(name)?;
+
+        Ok(())
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -167,12 +176,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut renderer = Renderer::new(display, image, depth)?;
 
     let mut changed = true;
+    let mut img_count = 0;
     events_loop.run(move |e, _, ctrl| match e {
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('a'),
             ..
         } => {
             renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(-0.01, 0.0, 0.0));
+            changed = true;
             //renderer.view_params.set_look_at(renderer.view_params.look_at + Vector3::new(-0.01, 0.0, 0.0));
         }
         Event::WindowEvent {
@@ -180,6 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..
         } => {
             renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(0.01, 0.0, 0.0));
+            changed = true;
             // eye.x += 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
@@ -189,11 +201,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             // eye.z += 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+            changed = true;
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('s'),
             ..
         } => {
+            changed = true;
             // eye.z -= 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
@@ -204,6 +218,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         Event::MainEventsCleared => {
             renderer.render();
+            if changed {
+                renderer.save_screenshot(&format!("screenshot-{}.png", img_count)).unwrap();
+                img_count+=1;
+                changed = false;
+            }
         }
         _ => {}
     });
