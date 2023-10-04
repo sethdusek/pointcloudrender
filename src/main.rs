@@ -132,7 +132,7 @@ impl Renderer {
         let mut draw_options = DrawParameters::default();
         draw_options.depth.test = glium::draw_parameters::DepthTest::IfLessOrEqual;
         draw_options.depth.write = true;
-        draw_options.point_size = Some(2.0);
+        draw_options.point_size = Some(1.0);
         target
             .draw(
                 &self.vertex_buffer,
@@ -146,7 +146,6 @@ impl Renderer {
     }
     fn save_screenshot(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let image: RawImage2d<'_, u8> = self.display.read_front_buffer()?;
-        dbg!(image.width, image.height);
         let image_buffer = ImageBuffer::from_raw(image.width, image.height, image.data.into_owned()).unwrap();
         let image = image::DynamicImage::ImageRgba8(image_buffer).flipv();
         image.save(name)?;
@@ -207,6 +206,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             event: WindowEvent::ReceivedCharacter('s'),
             ..
         } => {
+            changed = true;
+            // eye.z -= 0.01;
+            // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('f'),
+            ..
+        } => {
+            // set changed to true. this tells the renderer it should take a screenshot on the next frame
             changed = true;
             // eye.z -= 0.01;
             // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
