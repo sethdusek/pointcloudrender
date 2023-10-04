@@ -3,7 +3,7 @@ use image::{io::Reader as ImageReader, GrayImage, ImageBuffer, Luma, Rgb, Rgba};
 use glium::{
     glutin::event::{Event, WindowEvent},
     implement_vertex,
-    texture::{CompressedSrgbTexture2d, SrgbTexture2d, UnsignedTexture2d, RawImage2d},
+    texture::{CompressedSrgbTexture2d, RawImage2d, SrgbTexture2d, UnsignedTexture2d},
     uniform,
     uniforms::{ImageUnit, ImageUnitFormat, UniformBuffer},
     Display, DrawParameters, IndexBuffer, Program, Rect, Surface, Texture2d, VertexBuffer,
@@ -35,6 +35,9 @@ implement_vertex!(Vertex, position, color);
 struct ViewParams {
     eye: Point3<f32>,
     look_at: Point3<f32>,
+    roll: f32,
+    pitch: f32,
+    yaw: f32,
     camera: Matrix4<f32>,
     projection: Matrix4<f32>,
 }
@@ -44,13 +47,18 @@ impl ViewParams {
         ViewParams {
             eye,
             look_at,
-            camera: Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0)),
+            roll: 0.0,
+            pitch: 0.0,
+            yaw: 0.0,
+            camera: Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0))
+                * Matrix4::from_euler_angles(0.0, 0.0, 0.0),
             projection,
         }
     }
 
     fn update_camera(&mut self) {
-        self.camera = Matrix4::look_at_rh(&self.eye, &self.look_at, &Vector3::new(0.0, 1.0, 0.0));
+        self.camera = Matrix4::look_at_rh(&self.eye, &self.look_at, &Vector3::new(0.0, 1.0, 0.0))
+            * Matrix4::from_euler_angles(self.roll, self.pitch, self.yaw);
     }
 
     pub fn set_eye(&mut self, eye: Point3<f32>) {
@@ -59,6 +67,19 @@ impl ViewParams {
     }
     pub fn set_look_at(&mut self, look_at: Point3<f32>) {
         self.look_at = look_at;
+        self.update_camera();
+    }
+    pub fn set_roll(&mut self, roll: f32) {
+        self.roll = roll;
+        self.update_camera();
+    }
+    pub fn set_pitch(&mut self, pitch: f32) {
+        self.pitch = pitch;
+        self.update_camera();
+    }
+
+    pub fn set_yaw(&mut self, yaw: f32) {
+        self.yaw = yaw;
         self.update_camera();
     }
 }
@@ -111,7 +132,11 @@ impl Renderer {
         let look_at = Point3::new(0.0, 0.0, -0.1);
 
         // TODO: figure out projection. This is just a placeholder
-        let view_params = ViewParams::new(eye, look_at, Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 999.0));
+        let view_params = ViewParams::new(
+            eye,
+            look_at,
+            Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 999.0),
+        );
 
         Ok(Self {
             display,
@@ -132,7 +157,7 @@ impl Renderer {
         let mut draw_options = DrawParameters::default();
         draw_options.depth.test = glium::draw_parameters::DepthTest::IfLessOrEqual;
         draw_options.depth.write = true;
-        draw_options.point_size = Some(1.0);
+        draw_options.point_size = Some(2.0);
         target
             .draw(
                 &self.vertex_buffer,
@@ -146,7 +171,8 @@ impl Renderer {
     }
     fn save_screenshot(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let image: RawImage2d<'_, u8> = self.display.read_front_buffer()?;
-        let image_buffer = ImageBuffer::from_raw(image.width, image.height, image.data.into_owned()).unwrap();
+        let image_buffer =
+            ImageBuffer::from_raw(image.width, image.height, image.data.into_owned()).unwrap();
         let image = image::DynamicImage::ImageRgba8(image_buffer).flipv();
         image.save(name)?;
 
@@ -168,6 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cb = glium::glutin::ContextBuilder::new()
         .with_gl(glium::glutin::GlRequest::Latest)
         .with_pixel_format(8, 8)
+        .with_multisampling(8)
         .with_srgb(true);
 
     let display = glium::Display::new(wb, cb, &events_loop).unwrap();
@@ -181,34 +208,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             event: WindowEvent::ReceivedCharacter('a'),
             ..
         } => {
-            renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(-0.01, 0.0, 0.0));
-            //changed = true;
-            //renderer.view_params.set_look_at(renderer.view_params.look_at + Vector3::new(-0.01, 0.0, 0.0));
+            renderer
+                .view_params
+                .set_pitch(renderer.view_params.pitch + 0.01);
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('d'),
             ..
         } => {
-            renderer.view_params.set_eye(renderer.view_params.eye + Vector3::new(0.01, 0.0, 0.0));
-            //changed = true;
-            // eye.x += 0.01;
-            // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+            renderer
+                .view_params
+                .set_pitch(renderer.view_params.pitch - 0.01);
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('q'),
+            ..
+        } => {
+            renderer
+                .view_params
+                .set_yaw(renderer.view_params.yaw + 0.01);
+        }
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('e'),
+            ..
+        } => {
+            renderer
+                .view_params
+                .set_yaw(renderer.view_params.yaw - 0.01);
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('w'),
             ..
         } => {
-            // eye.z += 0.01;
-            // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
-            //changed = true;
+            renderer
+                .view_params
+                .set_roll(renderer.view_params.roll + 0.01);
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('s'),
             ..
         } => {
-            //changed = true;
-            // eye.z -= 0.01;
-            // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
+            renderer
+                .view_params
+                .set_roll(renderer.view_params.roll - 0.01);
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('f'),
@@ -216,8 +258,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             // set changed to true. this tells the renderer it should take a screenshot on the next frame
             changed = true;
-            // eye.z -= 0.01;
-            // view = Matrix4::look_at_rh(&eye, &look_at, &Vector3::new(0.0, 1.0, 0.0));
         }
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
@@ -227,8 +267,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Event::MainEventsCleared => {
             renderer.render();
             if changed {
-                renderer.save_screenshot(&format!("screenshot-{}.png", img_count)).unwrap();
-                img_count+=1;
+                renderer
+                    .save_screenshot(&format!("screenshot-{}.png", img_count))
+                    .unwrap();
+                img_count += 1;
                 changed = false;
             }
         }
