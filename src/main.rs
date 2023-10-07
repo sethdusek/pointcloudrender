@@ -1,14 +1,13 @@
-use image::{io::Reader as ImageReader, GrayImage, ImageBuffer, Luma, Rgb, Rgba};
+use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use glium::{
     glutin::event::{Event, WindowEvent},
     implement_vertex,
-    texture::{CompressedSrgbTexture2d, RawImage2d, SrgbTexture2d, UnsignedTexture2d},
+    texture::RawImage2d,
     uniform,
-    uniforms::{ImageUnit, ImageUnitFormat, UniformBuffer},
-    Display, DrawParameters, IndexBuffer, Program, Rect, Surface, Texture2d, VertexBuffer,
+    Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer, framebuffer::{SimpleFrameBuffer, DepthRenderBuffer},
 };
-use nalgebra::{Matrix4, Perspective3, Point3, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3};
 fn get_image() -> Result<
     (
         ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -146,8 +145,7 @@ impl Renderer {
         })
     }
 
-    fn render(&self) {
-        let mut target = self.display.draw();
+    fn render_to<S: glium::Surface>(&self, target: &mut S) {
         target.clear_depth(1.0);
         target.clear_color(0.0, 0.0, 0.0, 1.0);
 
@@ -167,8 +165,23 @@ impl Renderer {
                 &draw_options,
             )
             .unwrap();
-        target.finish().unwrap();
     }
+
+    fn render(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let target = self.display.draw();
+        let dims = target.get_dimensions();
+        // TODO: don't create new textures on every render iteration
+        let texture = Texture2d::empty(&self.display, dims.0, dims.1)?;
+        let depth_buffer = DepthRenderBuffer::new(&self.display, glium::texture::DepthFormat::I24, dims.0, dims.1)?;
+        let mut simple_buffer = SimpleFrameBuffer::with_depth_buffer(&self.display, &texture, &depth_buffer)?;
+        self.render_to(&mut simple_buffer);
+
+        simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+        target.finish()?;
+
+        Ok(())
+    }
+
     fn save_screenshot(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let image: RawImage2d<'_, u8> = self.display.read_front_buffer()?;
         let image_buffer =
@@ -265,7 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => ctrl.set_exit_with_code(0),
 
         Event::MainEventsCleared => {
-            renderer.render();
+            renderer.render().unwrap();
             if changed {
                 renderer
                     .save_screenshot(&format!("screenshot-{}.png", img_count))
