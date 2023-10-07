@@ -1,13 +1,18 @@
+use std::rc::Rc;
+
+use background_shader::BackgroundShader;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use glium::{
+    framebuffer::{DepthRenderBuffer, SimpleFrameBuffer},
     glutin::event::{Event, WindowEvent},
     implement_vertex,
-    texture::RawImage2d,
-    uniform,
-    Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer, framebuffer::{SimpleFrameBuffer, DepthRenderBuffer},
+    texture::{DepthTexture2d, RawImage2d},
+    uniform, Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer,
 };
 use nalgebra::{Matrix4, Point3, Vector3};
+
+mod background_shader;
 fn get_image() -> Result<
     (
         ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -83,10 +88,11 @@ impl ViewParams {
     }
 }
 struct Renderer {
-    display: Display,
+    display: Rc<Display>,
     program: Program,
     vertex_buffer: VertexBuffer<Vertex>,
     view_params: ViewParams,
+    background_shader: Option<BackgroundShader>
 }
 
 impl Renderer {
@@ -94,6 +100,7 @@ impl Renderer {
         display: Display,
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
+        background_filling: bool
     ) -> Result<Self, Box<dyn std::error::Error>> {
         assert_eq!(image.dimensions(), depth.dimensions());
         let dims = image.dimensions();
@@ -137,11 +144,20 @@ impl Renderer {
             Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 999.0),
         );
 
+        let display = Rc::new(display);
+        let background_shader = if background_filling {
+            Some(BackgroundShader::new(display.clone(), dims)?)
+        }
+        else {
+            None
+        };
+
         Ok(Self {
             display,
             program,
             vertex_buffer,
             view_params,
+            background_shader
         })
     }
 
@@ -167,16 +183,26 @@ impl Renderer {
             .unwrap();
     }
 
-    fn render(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let target = self.display.draw();
+    fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
-        let texture = Texture2d::empty(&self.display, dims.0, dims.1)?;
-        let depth_buffer = DepthRenderBuffer::new(&self.display, glium::texture::DepthFormat::I24, dims.0, dims.1)?;
-        let mut simple_buffer = SimpleFrameBuffer::with_depth_buffer(&self.display, &texture, &depth_buffer)?;
+        let texture = Texture2d::empty(&*self.display, dims.0, dims.1)?;
+        let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
+        let mut simple_buffer =
+            SimpleFrameBuffer::with_depth_buffer(&*self.display, &texture, &depth_buffer)?;
         self.render_to(&mut simple_buffer);
 
-        simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+        if let Some(background_shader) = &mut self.background_shader {
+            background_shader.run(&texture, &depth_buffer)?;
+            let (color, depth) = background_shader.front_buffer();
+            color.sync_shader_writes_for_surface();
+            color.as_surface().fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+            dbg!(background_shader.count());
+        }
+        else {
+            simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+        }
         target.finish()?;
 
         Ok(())
@@ -212,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let display = glium::Display::new(wb, cb, &events_loop).unwrap();
 
-    let mut renderer = Renderer::new(display, image, depth)?;
+    let mut renderer = Renderer::new(display, image, depth, true)?;
 
     let mut changed = true;
     let mut img_count = 0;
