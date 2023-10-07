@@ -188,7 +188,13 @@ impl Renderer {
         let mut target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
-        let texture = Texture2d::empty_with_format(&*self.display, glium::texture::UncompressedFloatFormat::U8U8U8U8, glium::texture::MipmapsOption::NoMipmap, dims.0, dims.1)?;
+        let texture = Texture2d::empty_with_format(
+            &*self.display,
+            glium::texture::UncompressedFloatFormat::U8U8U8U8,
+            glium::texture::MipmapsOption::NoMipmap,
+            dims.0,
+            dims.1,
+        )?;
         let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
         let mut simple_buffer =
             SimpleFrameBuffer::with_depth_buffer(&*self.display, &texture, &depth_buffer)?;
@@ -196,6 +202,7 @@ impl Renderer {
 
         if let Some(background_shader) = &mut self.background_shader {
             background_shader.run(&texture, &depth_buffer)?;
+            dbg!(background_shader.count());
             let (color, depth) = background_shader.front_buffer();
             color.sync_shader_writes_for_surface();
             color
@@ -227,7 +234,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().with_title("Point Cloud Render").with_inner_size(dims.0, dims.1).build(&events_loop);
+    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new()
+        .with_title("Point Cloud Render")
+        .with_inner_size(dims.0, dims.1)
+        .build(&events_loop);
     let mut renderer = Renderer::new(display, image, depth, true)?;
 
     let mut changed = true;
