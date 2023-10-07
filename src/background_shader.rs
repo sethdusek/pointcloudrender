@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use glium::{
     buffer::Buffer, framebuffer::SimpleFrameBuffer, program::ComputeShader,
-    texture::DepthTexture2d, uniforms::MagnifySamplerFilter, Display, Surface, Texture2d, uniform,
+    texture::DepthTexture2d, uniform, uniforms::MagnifySamplerFilter, Display, Surface, Texture2d, glutin::surface::WindowSurface,
 };
 
 pub struct BackgroundShader {
-    display: Rc<Display>,
+    display: Rc<Display<WindowSurface>>,
     shader: ComputeShader,
     buffers: [(Texture2d, DepthTexture2d); 2],
     // A simple boolean that lets us know no background filling was done in this iteration
@@ -14,15 +14,15 @@ pub struct BackgroundShader {
 }
 
 impl BackgroundShader {
-    pub fn new(display: Rc<Display>, dims: (u32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(display: Rc<Display<WindowSurface>>, dims: (u32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
         let shader = ComputeShader::from_source(&*display, include_str!("background_shader.glsl"))?;
         let buffers = [
             (
-                Texture2d::empty(&*display, dims.0, dims.1)?,
+                Texture2d::empty_with_format(&*display, glium::texture::UncompressedFloatFormat::U8U8U8U8, glium::texture::MipmapsOption::NoMipmap, dims.0, dims.1)?,
                 DepthTexture2d::empty(&*display, dims.0, dims.1)?,
             ),
             (
-                Texture2d::empty(&*display, dims.0, dims.1)?,
+                Texture2d::empty_with_format(&*display, glium::texture::UncompressedFloatFormat::U8U8U8U8, glium::texture::MipmapsOption::NoMipmap, dims.0, dims.1)?,
                 DepthTexture2d::empty(&*display, dims.0, dims.1)?,
             ),
         ];
@@ -63,19 +63,18 @@ impl BackgroundShader {
 
         let in_unit = self.buffers[0]
             .0
-            .image_unit(glium::uniforms::ImageUnitFormat::RGBA8UI)?
-        .set_access(glium::uniforms::ImageUnitAccess::Read);
+            .image_unit(glium::uniforms::ImageUnitFormat::RGBA8)?
+            .set_access(glium::uniforms::ImageUnitAccess::Read);
         let out_unit = self.buffers[1]
             .0
-            .image_unit(glium::uniforms::ImageUnitFormat::RGBA8UI)?
-        .set_access(glium::uniforms::ImageUnitAccess::Write);
-
+            .image_unit(glium::uniforms::ImageUnitFormat::RGBA8)?
+            .set_access(glium::uniforms::ImageUnitAccess::Write);
 
         let dims = (in_unit.0.width(), in_unit.0.height());
         let uniforms = uniform! {
             uWidth: dims.0,
             uHeight: dims.1,
-            in_image: in_unit,
+            //in_image: in_unit,
             out_image: out_unit,
             converged: &self.converged_tracker
 
@@ -90,5 +89,4 @@ impl BackgroundShader {
     pub fn count(&self) -> u32 {
         self.converged_tracker.read().unwrap()
     }
-
 }

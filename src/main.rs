@@ -5,14 +5,16 @@ use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use glium::{
     framebuffer::{DepthRenderBuffer, SimpleFrameBuffer},
-    glutin::event::{Event, WindowEvent},
+    glutin::surface::WindowSurface,
     implement_vertex,
     texture::{DepthTexture2d, RawImage2d},
     uniform, Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer,
 };
 use nalgebra::{Matrix4, Point3, Vector3};
+use winit::event::{Event, WindowEvent};
 
 mod background_shader;
+
 fn get_image() -> Result<
     (
         ImageBuffer<Rgba<u8>, Vec<u8>>,
@@ -88,19 +90,19 @@ impl ViewParams {
     }
 }
 struct Renderer {
-    display: Rc<Display>,
+    display: Rc<Display<WindowSurface>>,
     program: Program,
     vertex_buffer: VertexBuffer<Vertex>,
     view_params: ViewParams,
-    background_shader: Option<BackgroundShader>
+    background_shader: Option<BackgroundShader>,
 }
 
 impl Renderer {
     pub fn new(
-        display: Display,
+        display: Display<WindowSurface>,
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
-        background_filling: bool
+        background_filling: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         assert_eq!(image.dimensions(), depth.dimensions());
         let dims = image.dimensions();
@@ -147,8 +149,7 @@ impl Renderer {
         let display = Rc::new(display);
         let background_shader = if background_filling {
             Some(BackgroundShader::new(display.clone(), dims)?)
-        }
-        else {
+        } else {
             None
         };
 
@@ -157,7 +158,7 @@ impl Renderer {
             program,
             vertex_buffer,
             view_params,
-            background_shader
+            background_shader,
         })
     }
 
@@ -187,7 +188,7 @@ impl Renderer {
         let mut target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
-        let texture = Texture2d::empty(&*self.display, dims.0, dims.1)?;
+        let texture = Texture2d::empty_with_format(&*self.display, glium::texture::UncompressedFloatFormat::U8U8U8U8, glium::texture::MipmapsOption::NoMipmap, dims.0, dims.1)?;
         let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
         let mut simple_buffer =
             SimpleFrameBuffer::with_depth_buffer(&*self.display, &texture, &depth_buffer)?;
@@ -197,10 +198,10 @@ impl Renderer {
             background_shader.run(&texture, &depth_buffer)?;
             let (color, depth) = background_shader.front_buffer();
             color.sync_shader_writes_for_surface();
-            color.as_surface().fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
-            dbg!(background_shader.count());
-        }
-        else {
+            color
+                .as_surface()
+                .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+        } else {
             simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
         }
         target.finish()?;
@@ -224,20 +225,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dims = image.dimensions();
     //let dims = (640, 640);
 
-    let events_loop = glium::glutin::event_loop::EventLoop::new();
-    let wb = glium::glutin::window::WindowBuilder::new()
-        .with_inner_size(glium::glutin::dpi::PhysicalSize::new(dims.0, dims.1))
-        .with_resizable(false)
-        .with_title("Point Cloud Render");
+    let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let cb = glium::glutin::ContextBuilder::new()
-        .with_gl(glium::glutin::GlRequest::Latest)
-        .with_pixel_format(8, 8)
-        .with_multisampling(8)
-        .with_srgb(true);
-
-    let display = glium::Display::new(wb, cb, &events_loop).unwrap();
-
+    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().with_title("Point Cloud Render").with_inner_size(dims.0, dims.1).build(&events_loop);
     let mut renderer = Renderer::new(display, image, depth, true)?;
 
     let mut changed = true;
