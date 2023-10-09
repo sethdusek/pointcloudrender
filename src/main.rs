@@ -4,7 +4,7 @@ use background_shader::BackgroundShader;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use glium::{
-    framebuffer::{DepthRenderBuffer, SimpleFrameBuffer},
+    framebuffer::{DepthRenderBuffer, MultiOutputFrameBuffer, SimpleFrameBuffer},
     glutin::surface::WindowSurface,
     implement_vertex,
     texture::{DepthTexture2d, RawImage2d},
@@ -93,6 +93,8 @@ struct Renderer {
     display: Rc<Display<WindowSurface>>,
     program: Program,
     vertex_buffer: VertexBuffer<Vertex>,
+    target_texture: Texture2d,
+    target_depth: Texture2d,
     view_params: ViewParams,
     background_shader: Option<BackgroundShader>,
 }
@@ -114,7 +116,8 @@ impl Renderer {
         )?;
         let mut vertices = Vec::with_capacity((dims.0 * dims.1) as usize);
         let min_depth = depth.rows().flatten().map(|luma| luma.0[0]).min().unwrap();
-        let max_depth = depth.rows().flatten().map(|luma| luma.0[0]).max().unwrap() as f32;
+        let max_depth =
+            (depth.rows().flatten().map(|luma| luma.0[0]).max().unwrap() - min_depth) as f32;
         // Generate vertices for each pixel. OpenGL coordinates have a minimum of -1 and maximum of 1
         for (y, (r1, r2)) in image.rows().zip(depth.rows()).enumerate() {
             for (x, (c1, c2)) in r1.zip(r2).enumerate() {
@@ -143,10 +146,25 @@ impl Renderer {
         let view_params = ViewParams::new(
             eye,
             look_at,
-            Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 999.0),
+            Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 3.0),
         );
 
         let display = Rc::new(display);
+        let target_texture = Texture2d::empty_with_format(
+            &*display,
+            glium::texture::UncompressedFloatFormat::U8U8U8U8,
+            glium::texture::MipmapsOption::NoMipmap,
+            dims.0,
+            dims.1,
+        )?;
+        let target_depth = Texture2d::empty_with_format(
+            &*display,
+            glium::texture::UncompressedFloatFormat::F32,
+            glium::texture::MipmapsOption::NoMipmap,
+            dims.0,
+            dims.1,
+        )?;
+
         let background_shader = if background_filling {
             Some(BackgroundShader::new(display.clone(), dims)?)
         } else {
@@ -157,6 +175,8 @@ impl Renderer {
             display,
             program,
             vertex_buffer,
+            target_texture,
+            target_depth,
             view_params,
             background_shader,
         })
@@ -188,20 +208,21 @@ impl Renderer {
         let mut target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
-        let texture = Texture2d::empty_with_format(
-            &*self.display,
-            glium::texture::UncompressedFloatFormat::U8U8U8U8,
-            glium::texture::MipmapsOption::NoMipmap,
-            dims.0,
-            dims.1,
-        )?;
         let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
-        let mut simple_buffer =
-            SimpleFrameBuffer::with_depth_buffer(&*self.display, &texture, &depth_buffer)?;
-        self.render_to(&mut simple_buffer);
+
+        let outputs = [
+            ("color_out", &self.target_texture),
+            ("depth_out", &self.target_depth),
+        ];
+        let mut framebuffer = MultiOutputFrameBuffer::with_depth_buffer(
+            &*self.display,
+            outputs.iter().cloned(),
+            &depth_buffer,
+        )?;
+        self.render_to(&mut framebuffer);
 
         if let Some(background_shader) = &mut self.background_shader {
-            background_shader.run(&texture, &depth_buffer)?;
+            background_shader.run(&self.target_texture, &self.target_depth)?;
             dbg!(background_shader.count());
             let (color, depth) = background_shader.front_buffer();
             color.sync_shader_writes_for_surface();
@@ -209,6 +230,8 @@ impl Renderer {
                 .as_surface()
                 .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
         } else {
+            // Multi-output framebuffers don't support fill()
+            let simple_buffer = SimpleFrameBuffer::new(&*self.display, &self.target_texture)?;
             simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
         }
         target.finish()?;
