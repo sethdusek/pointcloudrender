@@ -74,6 +74,7 @@ impl BackgroundShader {
     fn iterate(&mut self) -> bool {
         self.converged_tracker.write(&0);
 
+        let start = std::time::Instant::now();
         let in_unit_color = self.buffers[0]
             .0
             .image_unit(glium::uniforms::ImageUnitFormat::RGBA8)
@@ -106,7 +107,21 @@ impl BackgroundShader {
             uHeight: dims.1,
             converged: &self.converged_tracker
         };
-        self.shader.execute(uniforms, dims.0, dims.1, 1);
+
+        //dbg!(std::time::Instant::now() - start);
+        self.shader.execute(
+            uniforms,
+            dims.0 / 8 + dims.0 % 8,
+            dims.1 / 8 + dims.1 % 8,
+            1,
+        );
+        // self.shader.execute(
+        //     uniforms,
+        //     dims.0,
+        //     dims.1,
+        //     1,
+        // );
+
         self.count() == 0
     }
     pub fn run(
@@ -124,9 +139,16 @@ impl BackgroundShader {
         self.buffers[0].0.sync_shader_writes_for_surface();
         self.buffers[0].1.sync_shader_writes_for_surface();
         let mut iters = 0;
-        while !self.iterate() && iters < 100 {
+        let mut start = std::time::Instant::now();
+        while iters < 2000 && !self.iterate() {
             self.buffers.swap(0, 1);
-            iters+=1;
+            let now = std::time::Instant::now();
+            println!(
+                "{iters} iteration of background shading took {}us",
+                (now - start).as_micros()
+            );
+            start = now;
+            iters += 1;
         }
         Ok(())
     }

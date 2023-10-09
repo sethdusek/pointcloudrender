@@ -1,6 +1,6 @@
 #version 460
 //#define FILTER(n) float sum ## n ## = 0.0; for (int i = 0; i < 9; i++) {sum ## n ## +=neighbors[i] * kernel ## n ## [i];}
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding=3, rgba8) uniform readonly image2D input_image;
 layout(binding=4, r32f) uniform readonly image2D input_depth;
@@ -43,6 +43,7 @@ void main() {
 
     if (abs(depth.r) > 1e-6) {
         imageStore(output_image, i, load);
+        imageStore(output_depth, i, depth);
     }
     else {
         float kernel1[9] = {
@@ -108,13 +109,14 @@ void main() {
             }
             imageStore(output_image, i + offsets[min_idx], imageLoad(input_image, i + offsets[min_idx]));
             imageStore(output_depth, i + offsets[min_idx], imageLoad(input_depth, i + offsets[min_idx]));
+        // Mark background filling as incomplete
+        // atomicOr isn't working for some reason so this will have to do
+            atomicCounterMax(converged, uint(1));
         }
         else {
             imageStore(output_image, i, load);
-            imageStore(output_depth, i, vec4(vec3(depth), 1.0));
+            imageStore(output_depth, i, depth);
         }
-        // Mark background filling as incomplete
-        atomicCounterMax(converged, uint(1));
     }
 
 }

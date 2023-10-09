@@ -204,7 +204,8 @@ impl Renderer {
             .unwrap();
     }
 
-    fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: remove toggle
+    fn render(&mut self, toggle: bool) -> Result<(), Box<dyn std::error::Error>> {
         let mut target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
@@ -222,14 +223,17 @@ impl Renderer {
         self.render_to(&mut framebuffer);
 
         if let Some(background_shader) = &mut self.background_shader {
-            background_shader.run(&self.target_texture, &self.target_depth)?;
-            dbg!(background_shader.count());
-            let (color, depth) = background_shader.front_buffer();
-            color.sync_shader_writes_for_surface();
-            color
-                .as_surface()
-                .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
-        } else {
+            if toggle {
+                background_shader.run(&self.target_texture, &self.target_depth)?;
+                dbg!(background_shader.count());
+                let (color, depth) = background_shader.front_buffer();
+                color.sync_shader_writes_for_surface();
+                color
+                    .as_surface()
+                    .fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
+            }
+        }
+        if !toggle {
             // Multi-output framebuffers don't support fill()
             let simple_buffer = SimpleFrameBuffer::new(&*self.display, &self.target_texture)?;
             simple_buffer.fill(&target, glium::uniforms::MagnifySamplerFilter::Nearest);
@@ -265,6 +269,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut changed = true;
     let mut img_count = 0;
+    let mut toggle = false;
     events_loop.run(move |e, _, ctrl| match e {
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('a'),
@@ -322,12 +327,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             changed = true;
         }
         Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('t'),
+            ..
+        } => {
+            // enable background filling
+            toggle = !toggle;
+        }
+        Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => ctrl.set_exit_with_code(0),
 
         Event::MainEventsCleared => {
-            renderer.render().unwrap();
+            renderer.render(toggle).unwrap();
             if changed {
                 renderer
                     .save_screenshot(&format!("screenshot-{}.png", img_count))
