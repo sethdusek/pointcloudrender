@@ -270,6 +270,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut changed = true;
     let mut img_count = 0;
     let mut toggle = false;
+    let shaders = [include_str!("background_shader.glsl"), include_str!("background_shader2.glsl")];
+    let mut idx = 0;
     events_loop.run(move |e, _, ctrl| match e {
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('a'),
@@ -332,6 +334,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             // enable background filling
             toggle = !toggle;
+        }
+        // Temporary seting harness to swap shaders
+        Event::WindowEvent {
+            event: WindowEvent::ReceivedCharacter('y'),
+            ..
+        } => {
+            // enable background filling
+            idx = (idx + 1) % shaders.len();
+            dbg!(idx);
+            if let Some(bs) = renderer.background_shader.as_mut() {
+                bs.set_shader(shaders[idx]);
+            }
         }
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
