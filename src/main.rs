@@ -192,7 +192,7 @@ impl Renderer {
         let mut draw_options = DrawParameters::default();
         draw_options.depth.test = glium::draw_parameters::DepthTest::IfLessOrEqual;
         draw_options.depth.write = true;
-        draw_options.point_size = Some(2.0);
+        draw_options.point_size = Some(1.0);
         target
             .draw(
                 &self.vertex_buffer,

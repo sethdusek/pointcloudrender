@@ -71,10 +71,9 @@ impl BackgroundShader {
     }
 
     // Run 1 iteration of the background filling process
-    fn iterate(&mut self) -> bool {
+    fn iterate(&mut self) {
         self.converged_tracker.write(&0);
 
-        let start = std::time::Instant::now();
         let in_unit_color = self.buffers[0]
             .0
             .image_unit(glium::uniforms::ImageUnitFormat::RGBA8)
@@ -121,8 +120,7 @@ impl BackgroundShader {
         //     dims.1,
         //     1,
         // );
-
-        self.count() == 0
+        //self.count() == 0
     }
     pub fn run(
         &mut self,
@@ -140,13 +138,17 @@ impl BackgroundShader {
         self.buffers[0].1.sync_shader_writes_for_surface();
         let mut iters = 0;
         let mut start = std::time::Instant::now();
-        while iters < 2000 && !self.iterate() {
-            self.buffers.swap(0, 1);
+        while iters < 40 {
             let now = std::time::Instant::now();
+            self.iterate();
+            self.buffers.swap(0, 1);
             println!(
                 "{iters} iteration of background shading took {}us",
                 (now - start).as_micros()
             );
+            if iters % 10 == 0 && self.count() == 0 {
+                break;
+            }
             start = now;
             iters += 1;
         }

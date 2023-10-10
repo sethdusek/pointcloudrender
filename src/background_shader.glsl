@@ -17,13 +17,14 @@ vec4 c_load(readonly image2D image, ivec2 coords) {
     return imageLoad(image, clamped);
 }
 
-float apply_kernel(float kernel[9], vec4 neighbors[9]) {
+float apply_kernel(float kernel[9], float neighbors[9]) {
     float sum = 0.0;
     for (int i = 0; i < 9; i++) {
-        sum+=neighbors[i].r * kernel[i];
+        sum+=neighbors[i] * kernel[i];
     }
     return sum;
 }
+
 
 void main() {
     ivec2 i = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
@@ -35,13 +36,13 @@ void main() {
         ivec2(-1, 0), ivec2(0, 0), ivec2(1, 0),
         ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1)
     };
-    vec4 neighbors[9] = {
-        c_load(input_depth, i + offsets[0]), c_load(input_depth, i + offsets[1]), c_load(input_depth, i + offsets[2]),
-        c_load(input_depth, i + offsets[3]), c_load(input_depth, i + offsets[4]), c_load(input_depth, i + offsets[5]),
-        c_load(input_depth, i + offsets[6]), c_load(input_depth, i + offsets[7]), c_load(input_depth, i + offsets[8])
+    float neighbors[9] = {
+        c_load(input_depth, i + offsets[0]).r, c_load(input_depth, i + offsets[1]).r, c_load(input_depth, i + offsets[2]).r,
+        c_load(input_depth, i + offsets[3]).r, c_load(input_depth, i + offsets[4]).r, c_load(input_depth, i + offsets[5]).r,
+        c_load(input_depth, i + offsets[6]).r, c_load(input_depth, i + offsets[7]).r, c_load(input_depth, i + offsets[8]).r
     };
 
-    if (abs(depth.r) > 1e-6) {
+    if (abs(depth.r) > 1e-5) {
         imageStore(output_image, i, load);
         imageStore(output_depth, i, depth);
     }
@@ -102,15 +103,15 @@ void main() {
             int min_idx = 0;
             float min_depth = 9999.0;
             for (int i = 0; i < 9; i++) {
-                if (neighbors[i].r < min_depth) {
+                if (neighbors[i] < min_depth) {
                     min_idx = i;
                     min_depth = min_depth;
                 }
             }
-            imageStore(output_image, i + offsets[min_idx], imageLoad(input_image, i + offsets[min_idx]));
-            imageStore(output_depth, i + offsets[min_idx], imageLoad(input_depth, i + offsets[min_idx]));
-        // Mark background filling as incomplete
-        // atomicOr isn't working for some reason so this will have to do
+            imageStore(output_image, i, imageLoad(input_image, i + offsets[min_idx]));
+            imageStore(output_depth, i, imageLoad(input_depth, i + offsets[min_idx]));
+            // Mark background filling as incomplete
+            // atomicOr isn't working for some reason so this will have to do
             atomicCounterMax(converged, uint(1));
         }
         else {
