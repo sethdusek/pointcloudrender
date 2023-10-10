@@ -225,7 +225,6 @@ impl Renderer {
         if let Some(background_shader) = &mut self.background_shader {
             if toggle {
                 background_shader.run(&self.target_texture, &self.target_depth)?;
-                dbg!(background_shader.count());
                 let (color, depth) = background_shader.front_buffer();
                 color.sync_shader_writes_for_surface();
                 color

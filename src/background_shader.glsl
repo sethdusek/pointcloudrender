@@ -29,7 +29,6 @@ float apply_kernel(float kernel[9], float neighbors[9]) {
 void main() {
     ivec2 i = ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     vec4 load = imageLoad(input_image, i);// / 255.0;
-    vec4 depth = imageLoad(input_depth, i);
 
     ivec2 offsets[9] = {
         ivec2(-1, -1), ivec2(0, -1), ivec2(1, -1),
@@ -42,9 +41,9 @@ void main() {
         c_load(input_depth, i + offsets[6]).r, c_load(input_depth, i + offsets[7]).r, c_load(input_depth, i + offsets[8]).r
     };
 
-    if (abs(depth.r) > 1e-5) {
+    if (abs(neighbors[4]) > 1e-5) {
         imageStore(output_image, i, load);
-        imageStore(output_depth, i, depth);
+        imageStore(output_depth, i, vec4(neighbors[4]));
     }
     else {
         float kernel1[9] = {
@@ -99,8 +98,8 @@ void main() {
 
         float prod = sum1 * sum2 * sum3 * sum4 * sum5 * sum6 * sum7 * sum8;
 
+        int min_idx = 4;
         if (abs(prod) > 1e-6) {
-            int min_idx = 0;
             float min_depth = 9999.0;
             for (int i = 0; i < 9; i++) {
                 if (neighbors[i] < min_depth) {
@@ -108,16 +107,12 @@ void main() {
                     min_depth = min_depth;
                 }
             }
-            imageStore(output_image, i, imageLoad(input_image, i + offsets[min_idx]));
-            imageStore(output_depth, i, imageLoad(input_depth, i + offsets[min_idx]));
             // Mark background filling as incomplete
             // atomicOr isn't working for some reason so this will have to do
             atomicCounterMax(converged, uint(1));
         }
-        else {
-            imageStore(output_image, i, load);
-            imageStore(output_depth, i, depth);
-        }
+        imageStore(output_image, i, imageLoad(input_image, i + offsets[min_idx]));
+        imageStore(output_depth, i, vec4(neighbors[min_idx]));
     }
 
 }

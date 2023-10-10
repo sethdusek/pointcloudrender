@@ -3,7 +3,7 @@ use std::rc::Rc;
 use glium::{
     buffer::Buffer, framebuffer::SimpleFrameBuffer, glutin::surface::WindowSurface,
     program::ComputeShader, texture::DepthTexture2d, uniform, uniforms::MagnifySamplerFilter,
-    Display, Surface, Texture2d,
+    Display, Surface, Texture2d, SyncFence,
 };
 
 pub struct BackgroundShader {
@@ -59,7 +59,7 @@ impl BackgroundShader {
             &*display,
             &0u32,
             glium::buffer::BufferType::AtomicCounterBuffer,
-            glium::buffer::BufferMode::Persistent,
+            glium::buffer::BufferMode::Dynamic,
         )?;
 
         Ok(Self {
@@ -72,7 +72,10 @@ impl BackgroundShader {
 
     // Run 1 iteration of the background filling process
     fn iterate(&mut self) {
-        self.converged_tracker.write(&0);
+
+        let mut start = std::time::Instant::now();
+        //self.converged_tracker.write(&0);
+        //println!("Uniform write time: {:?}", std::time::Instant::now() - start);
 
         let in_unit_color = self.buffers[0]
             .0
@@ -107,13 +110,13 @@ impl BackgroundShader {
             converged: &self.converged_tracker
         };
 
-        //dbg!(std::time::Instant::now() - start);
         self.shader.execute(
             uniforms,
             dims.0 / 8 + dims.0 % 8,
             dims.1 / 8 + dims.1 % 8,
             1,
         );
+        //fence.wait();
         // self.shader.execute(
         //     uniforms,
         //     dims.0,
@@ -137,21 +140,23 @@ impl BackgroundShader {
         self.buffers[0].0.sync_shader_writes_for_surface();
         self.buffers[0].1.sync_shader_writes_for_surface();
         let mut iters = 0;
+        let mut sum = 0;
         let mut start = std::time::Instant::now();
         while iters < 40 {
+            if iters % 20 == 0 {
+                self.converged_tracker.write(&0);
+            }
             let now = std::time::Instant::now();
             self.iterate();
             self.buffers.swap(0, 1);
-            println!(
-                "{iters} iteration of background shading took {}us",
-                (now - start).as_micros()
-            );
-            if iters % 10 == 0 && self.count() == 0 {
+            sum += (now - start).as_micros();
+            if iters % 20 == 0 && self.count() == 0 {
                 break;
             }
             start = now;
             iters += 1;
         }
+        //println!("Average: {}us", sum.checked_div(iters).unwrap_or(0));
         Ok(())
     }
     // Return the buffer that was last filled in. Calling this before BackgroundShader::run will probably result in garbage
