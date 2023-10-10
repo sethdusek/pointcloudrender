@@ -138,25 +138,20 @@ impl BackgroundShader {
         self.buffers[0].1.sync_shader_writes_for_surface();
         let mut iters = 0;
         let mut start = std::time::Instant::now();
-
-        let mut sum = 0;
-
         while iters < 40 {
             let now = std::time::Instant::now();
             self.iterate();
             self.buffers.swap(0, 1);
-            // println!(
-            //     "{iters} iteration of background shading took {}us",
-            //     (now - start).as_micros()
-            // );
-            sum+=(now - start).as_micros();
+            println!(
+                "{iters} iteration of background shading took {}us",
+                (now - start).as_micros()
+            );
             if iters % 10 == 0 && self.count() == 0 {
                 break;
             }
             start = now;
             iters += 1;
         }
-        println!("Average: {}", sum.checked_div(iters).unwrap_or(0));
         Ok(())
     }
     // Return the buffer that was last filled in. Calling this before BackgroundShader::run will probably result in garbage
@@ -166,10 +161,5 @@ impl BackgroundShader {
     }
     pub fn count(&self) -> u32 {
         self.converged_tracker.read().unwrap()
-    }
-
-    pub fn set_shader(&mut self, src: &str) {
-        let shader = ComputeShader::from_source(&*self.display, src).unwrap();
-        self.shader = shader;
     }
 }
