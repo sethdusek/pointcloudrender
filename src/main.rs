@@ -4,14 +4,17 @@ use background_shader::BackgroundShader;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use glium::{
-    framebuffer::{DepthRenderBuffer, MultiOutputFrameBuffer, SimpleFrameBuffer},
+    framebuffer::{MultiOutputFrameBuffer, SimpleFrameBuffer},
     glutin::surface::WindowSurface,
     implement_vertex,
     texture::{DepthTexture2d, RawImage2d},
     uniform, Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer,
 };
 use nalgebra::{Matrix4, Point3, Vector3};
-use winit::event::{Event, WindowEvent};
+use winit::{
+    event::{Event, WindowEvent},
+    window::Window,
+};
 
 mod background_shader;
 
@@ -206,7 +209,7 @@ impl Renderer {
 
     // TODO: remove toggle
     fn render(&mut self, toggle: bool) -> Result<(), Box<dyn std::error::Error>> {
-        let mut target = self.display.draw();
+        let target = self.display.draw();
         let dims = target.get_dimensions();
         // TODO: don't create new textures on every render iteration
         let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
@@ -225,7 +228,7 @@ impl Renderer {
         if let Some(background_shader) = &mut self.background_shader {
             if toggle {
                 background_shader.run(&self.target_texture, &self.target_depth)?;
-                let (color, depth) = background_shader.front_buffer();
+                let (color, _depth) = background_shader.front_buffer();
                 color.sync_shader_writes_for_surface();
                 color
                     .as_surface()
@@ -253,6 +256,64 @@ impl Renderer {
     }
 }
 
+fn open_display(
+    event_loop: &winit::event_loop::EventLoop<()>,
+    width: u32,
+    height: u32,
+) -> (Window, Display<WindowSurface>) {
+    // Boilerplate code ripped from glium git
+    use glutin::display::GetGlDisplay;
+    use glutin::prelude::*;
+    use raw_window_handle::HasRawWindowHandle;
+    
+
+    // First we start by opening a new Window
+    let builder = winit::window::WindowBuilder::new()
+        .with_inner_size(winit::dpi::PhysicalSize::new(width, height));
+    let display_builder = glutin_winit::DisplayBuilder::new().with_window_builder(Some(builder));
+    let config_template_builder = glutin::config::ConfigTemplateBuilder::new();
+
+    let (window, gl_config) = display_builder
+        .build(&event_loop, config_template_builder, |mut configs| {
+            // Just use the first configuration since we don't have any special preferences here
+            configs.next().unwrap()
+        })
+        .unwrap();
+    let window = window.unwrap();
+
+    // Now we get the window size to use as the initial size of the Surface
+    let (width, height): (u32, u32) = window.inner_size().into();
+    let attrs = glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
+        .build(
+            window.raw_window_handle(),
+            std::num::NonZeroU32::new(width).unwrap(),
+            std::num::NonZeroU32::new(height).unwrap(),
+        );
+
+    // Finally we can create a Surface, use it to make a PossiblyCurrentContext and create the glium Display
+    let surface = unsafe {
+        gl_config
+            .display()
+            .create_window_surface(&gl_config, &attrs)
+            .unwrap()
+    };
+    let context_attributes = glutin::context::ContextAttributesBuilder::new()
+        .with_context_api(glutin::context::ContextApi::OpenGl(Some(
+            glutin::context::Version { major: 4, minor: 6 },
+        )))
+        .build(Some(window.raw_window_handle()));
+    let current_context = Some(unsafe {
+        gl_config
+            .display()
+            .create_context(&gl_config, &context_attributes)
+            .expect("failed to create context")
+    })
+    .unwrap()
+    .make_current(&surface)
+    .unwrap();
+    let display = Display::from_context_surface(current_context, surface).unwrap();
+    (window, display)
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (image, depth) = get_image().unwrap();
     let dims = image.dimensions();
@@ -260,10 +321,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new()
-        .with_title("Point Cloud Render")
-        .with_inner_size(dims.0, dims.1)
-        .build(&events_loop);
+    let (_window, display) = open_display(&events_loop, dims.0, dims.1);
+
+    dbg!(display.get_opengl_vendor_string());
+    dbg!(
+        display.get_supported_glsl_version(),
+        display.get_opengl_version()
+    );
     let mut renderer = Renderer::new(display, image, depth, true)?;
 
     let mut changed = true;

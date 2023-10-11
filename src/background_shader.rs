@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use glium::{
     buffer::Buffer, framebuffer::SimpleFrameBuffer, glutin::surface::WindowSurface,
-    program::ComputeShader, texture::DepthTexture2d, uniform, uniforms::MagnifySamplerFilter,
-    Display, Surface, Texture2d, SyncFence,
+    program::ComputeShader, uniform, uniforms::MagnifySamplerFilter,
+    Display, Surface, Texture2d,
 };
 
 pub struct BackgroundShader {
@@ -72,8 +72,7 @@ impl BackgroundShader {
 
     // Run 1 iteration of the background filling process
     fn iterate(&mut self) {
-
-        let mut start = std::time::Instant::now();
+        let _start = std::time::Instant::now();
         //self.converged_tracker.write(&0);
         //println!("Uniform write time: {:?}", std::time::Instant::now() - start);
 

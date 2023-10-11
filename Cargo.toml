@@ -7,6 +7,9 @@ edition = "2021"
 
 [dependencies]
 glium = { git = "https://github.com/glium/glium.git" }
+glutin = "0.30.4"
+glutin-winit = "0.3.0"
 image = "0.24.7"
 nalgebra = "0.32.3"
+raw-window-handle = "0.5"
 winit = "0.28.7"
