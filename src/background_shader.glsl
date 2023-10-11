@@ -12,9 +12,9 @@ uniform uint uHeight;
 layout(binding=0) uniform atomic_uint converged;
 
 // Clamped load, make sure nothing goes out of bounds
-vec4 c_load(readonly image2D image, ivec2 coords) {
+vec4 c_load(ivec2 coords) {
     ivec2 clamped = ivec2(clamp(coords.x, 0, uWidth), clamp(coords.y, 0, uHeight));
-    return imageLoad(image, clamped);
+    return imageLoad(input_depth, clamped);
 }
 
 float apply_kernel(float kernel[9], float neighbors[9]) {
@@ -36,9 +36,9 @@ void main() {
         ivec2(-1, 1), ivec2(0, 1), ivec2(1, 1)
     };
     float neighbors[9] = {
-        c_load(input_depth, i + offsets[0]).r, c_load(input_depth, i + offsets[1]).r, c_load(input_depth, i + offsets[2]).r,
-        c_load(input_depth, i + offsets[3]).r, c_load(input_depth, i + offsets[4]).r, c_load(input_depth, i + offsets[5]).r,
-        c_load(input_depth, i + offsets[6]).r, c_load(input_depth, i + offsets[7]).r, c_load(input_depth, i + offsets[8]).r
+        c_load(i + offsets[0]).r, c_load(i + offsets[1]).r, c_load(i + offsets[2]).r,
+        c_load(i + offsets[3]).r, c_load(i + offsets[4]).r, c_load(i + offsets[5]).r,
+        c_load(i + offsets[6]).r, c_load(i + offsets[7]).r, c_load(i + offsets[8]).r
     };
 
     if (abs(neighbors[4]) > 1e-5) {
