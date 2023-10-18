@@ -15,24 +15,11 @@ use winit::{
     event::{Event, WindowEvent},
     window::Window,
 };
+use clap::{Parser, Subcommand};
 
 mod background_shader;
 
-fn get_image() -> Result<
-    (
-        ImageBuffer<Rgba<u8>, Vec<u8>>,
-        ImageBuffer<Luma<u8>, Vec<u8>>,
-    ),
-    Box<dyn std::error::Error>,
-> {
-    let mut args = std::env::args().skip(1);
-    let img_path = args.next().unwrap();
-    let depth_path = args.next().unwrap();
-    let img = ImageReader::open(img_path)?.decode()?.to_rgba8();
-    let depth = ImageReader::open(depth_path)?.decode()?.to_luma8();
-    assert_eq!(img.dimensions(), depth.dimensions());
-    Ok((img, depth))
-}
+
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -314,10 +301,29 @@ fn open_display(
     let display = Display::from_context_surface(current_context, surface).unwrap();
     (window, display)
 }
+
+#[derive(Parser)]
+struct Args {
+    image_path: String,
+    depth_path: String
+}
+
+fn get_image(args: &Args) -> Result<
+    (
+        ImageBuffer<Rgba<u8>, Vec<u8>>,
+        ImageBuffer<Luma<u8>, Vec<u8>>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let img = ImageReader::open(&args.image_path)?.decode()?.to_rgba8();
+    let depth = ImageReader::open(&args.depth_path)?.decode()?.to_luma8();
+    assert_eq!(img.dimensions(), depth.dimensions());
+    Ok((img, depth))
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (image, depth) = get_image().unwrap();
+    let args = Args::parse();
+    let (image, depth) = get_image(&args).unwrap();
     let dims = image.dimensions();
-    //let dims = (640, 640);
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 

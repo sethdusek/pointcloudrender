@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "4.4.6", features = ["derive"] }
 glium = { git = "https://github.com/glium/glium.git" }
 glutin = "0.30.4"
 glutin-winit = "0.3.0"

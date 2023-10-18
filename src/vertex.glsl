@@ -8,6 +8,6 @@ out float depth;
 
 void main() {
     gl_Position = projectionview * vec4(position.x, position.y, position.z, 1.0);
-    depth = (gl_Position.z);
+    depth = gl_Position.z;
     fcolor = color;
 }
