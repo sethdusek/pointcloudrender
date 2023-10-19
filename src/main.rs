@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{borrow::Cow, rc::Rc};
 
 use background_shader::BackgroundShader;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
@@ -192,7 +192,7 @@ impl Renderer {
             raw_image,
         );
         let raw_depth = RawImage2d {
-            data: std::borrow::Cow::Owned(image::imageops::flip_vertical(&depth).to_vec()),
+            data: Cow::Owned(image::imageops::flip_vertical(&depth).to_vec()),
             format: glium::texture::ClientFormat::U8,
             width: dims.0,
             height: dims.1,
@@ -295,6 +295,24 @@ impl Renderer {
         image.save(name)?;
 
         Ok(())
+    }
+    fn save_depth(&self, name: &str) {
+        let depth_texture = if let Some(background_shader) = self.background_shader.as_ref() {
+            &background_shader.front_buffer().1
+        } else {
+            eprintln!("WARNING: Background shading disabled. Reading depth map from target depth");
+            &self.target_depth
+        };
+        unsafe {
+            let output: RawImage2d<'static, f32> =
+                depth_texture.unchecked_read::<RawImage2d<'static, f32>, f32>();
+            let image_buffer: ImageBuffer<image::Luma<u8>, Vec<u8>> = ImageBuffer::from_vec(output.width, output.height,
+            output.data.iter().copied().map(|f| (f * 255.0) as u8).collect::<Vec<u8>>()).unwrap();
+
+            let image = image::DynamicImage::ImageLuma8(image_buffer).flipv();
+
+            image.save(name).unwrap();
+        }
     }
 }
 
@@ -507,6 +525,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 renderer
                     .save_screenshot(&format!("screenshot-{}.png", img_count))
                     .unwrap();
+                renderer
+                    .save_depth(&format!("screenshot-depth-{}.png", img_count));
                 img_count += 1;
                 changed = false;
             }
