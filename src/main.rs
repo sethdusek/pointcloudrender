@@ -3,6 +3,7 @@ use std::rc::Rc;
 use background_shader::BackgroundShader;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
+use clap::{Parser, Subcommand};
 use glium::{
     framebuffer::{MultiOutputFrameBuffer, SimpleFrameBuffer},
     glutin::surface::WindowSurface,
@@ -10,16 +11,13 @@ use glium::{
     texture::{DepthTexture2d, RawImage2d},
     uniform, Display, DrawParameters, Program, Surface, Texture2d, VertexBuffer,
 };
-use nalgebra::{Matrix4, Point3, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3, Vector4};
 use winit::{
     event::{Event, WindowEvent},
     window::Window,
 };
-use clap::{Parser, Subcommand};
 
 mod background_shader;
-
-
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -87,6 +85,7 @@ struct Renderer {
     target_depth: Texture2d,
     view_params: ViewParams,
     background_shader: Option<BackgroundShader>,
+    raster: bool,
 }
 
 impl Renderer {
@@ -95,6 +94,7 @@ impl Renderer {
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
         background_filling: bool,
+        raster: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         assert_eq!(image.dimensions(), depth.dimensions());
         let dims = image.dimensions();
@@ -116,7 +116,8 @@ impl Renderer {
                         (x as f32 / dims.0 as f32) * 2.0 - 1.0,
                         // Top of the screen is +1 in OpenGL
                         (y as f32 / dims.1 as f32) * -2.0 + 1.0,
-                        ((c2.0[0] - min_depth) as f32 / max_depth) * -2.0 + 0.9,
+                        ((c2.0[0] - min_depth) as f32 / (max_depth - min_depth as f32)) * -2.0
+                            + 0.9,
                     ],
                     color: [
                         c1.0[0] as f32 / 255.0,
@@ -127,6 +128,22 @@ impl Renderer {
                 });
             }
         }
+        println!(
+            "Min depth: {:?}",
+            vertices
+                .iter()
+                .map(|v| float_ord::FloatOrd(v.position[2]))
+                .min()
+                .unwrap()
+        );
+        println!(
+            "Max depth: {:?}",
+            vertices
+                .iter()
+                .map(|v| float_ord::FloatOrd(v.position[2]))
+                .max()
+                .unwrap()
+        );
         let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
 
         let eye = Point3::new(0.0f32, 0.0, 1.0);
@@ -138,6 +155,15 @@ impl Renderer {
             look_at,
             Matrix4::new_orthographic(-1.0f32, 1.0, -1.0, 1.0, 0.0, 3.0),
         );
+
+        // println!("Min depth camera: {:?}", vertices.iter().map(|v| view_params.camera * Vector4::new(v.position[0], v.position[1], v.position[2], 1.0)).
+        //                                                 map(|v| float_ord::FloatOrd(v[2])).min().unwrap());
+        // println!("Max depth camera: {:?}", vertices.iter().map(|v| view_params.camera * Vector4::new(v.position[0], v.position[1], v.position[2], 1.0)).
+        //                                                 map(|v| float_ord::FloatOrd(v[2])).max().unwrap());
+        // println!("Min depth projection: {:?}", vertices.iter().map(|v| view_params.projection * view_params.camera * Vector4::new(v.position[0], v.position[1], v.position[2], 1.0)).
+        //                                                 map(|v| float_ord::FloatOrd(v[2])).min().unwrap());
+        // println!("Max depth projection: {:?}", vertices.iter().map(|v| view_params.projection * view_params.camera * Vector4::new(v.position[0], v.position[1], v.position[2], 1.0)).
+        //                                                 map(|v| float_ord::FloatOrd(v[2])).max().unwrap());
 
         let display = Rc::new(display);
         let target_texture = Texture2d::empty_with_format(
@@ -155,6 +181,32 @@ impl Renderer {
             dims.1,
         )?;
 
+        let raw_image = RawImage2d::from_raw_rgba_reversed(&image.to_vec(), dims);
+        target_texture.write(
+            glium::Rect {
+                left: 0,
+                bottom: 0,
+                width: dims.0,
+                height: dims.1,
+            },
+            raw_image,
+        );
+        let raw_depth = RawImage2d {
+            data: std::borrow::Cow::Owned(image::imageops::flip_vertical(&depth).to_vec()),
+            format: glium::texture::ClientFormat::U8,
+            width: dims.0,
+            height: dims.1,
+        };
+        target_depth.write(
+            glium::Rect {
+                left: 0,
+                bottom: 0,
+                width: dims.0,
+                height: dims.1,
+            },
+            raw_depth,
+        );
+
         let background_shader = if background_filling {
             Some(BackgroundShader::new(display.clone(), dims)?)
         } else {
@@ -169,6 +221,7 @@ impl Renderer {
             target_depth,
             view_params,
             background_shader,
+            raster,
         })
     }
 
@@ -197,20 +250,22 @@ impl Renderer {
     // TODO: remove toggle
     fn render(&mut self, toggle: bool) -> Result<(), Box<dyn std::error::Error>> {
         let target = self.display.draw();
-        let dims = target.get_dimensions();
-        // TODO: don't create new textures on every render iteration
-        let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
+        if self.raster {
+            let dims = target.get_dimensions();
+            // TODO: don't create new textures on every render iteration
+            let depth_buffer = DepthTexture2d::empty(&*self.display, dims.0, dims.1)?;
 
-        let outputs = [
-            ("color_out", &self.target_texture),
-            ("depth_out", &self.target_depth),
-        ];
-        let mut framebuffer = MultiOutputFrameBuffer::with_depth_buffer(
-            &*self.display,
-            outputs.iter().cloned(),
-            &depth_buffer,
-        )?;
-        self.render_to(&mut framebuffer);
+            let outputs = [
+                ("color_out", &self.target_texture),
+                ("depth_out", &self.target_depth),
+            ];
+            let mut framebuffer = MultiOutputFrameBuffer::with_depth_buffer(
+                &*self.display,
+                outputs.iter().cloned(),
+                &depth_buffer,
+            )?;
+            self.render_to(&mut framebuffer);
+        }
 
         if let Some(background_shader) = &mut self.background_shader {
             if toggle {
@@ -252,7 +307,6 @@ fn open_display(
     use glutin::display::GetGlDisplay;
     use glutin::prelude::*;
     use raw_window_handle::HasRawWindowHandle;
-    
 
     // First we start by opening a new Window
     let builder = winit::window::WindowBuilder::new()
@@ -305,10 +359,14 @@ fn open_display(
 #[derive(Parser)]
 struct Args {
     image_path: String,
-    depth_path: String
+    depth_path: String,
+    before_path: Option<String>,
+    mask_path: Option<String>,
 }
 
-fn get_image(args: &Args) -> Result<
+fn get_image(
+    args: &Args,
+) -> Result<
     (
         ImageBuffer<Rgba<u8>, Vec<u8>>,
         ImageBuffer<Luma<u8>, Vec<u8>>,
@@ -316,8 +374,49 @@ fn get_image(args: &Args) -> Result<
     Box<dyn std::error::Error>,
 > {
     let img = ImageReader::open(&args.image_path)?.decode()?.to_rgba8();
-    let depth = ImageReader::open(&args.depth_path)?.decode()?.to_luma8();
+    let mut depth = ImageReader::open(&args.depth_path)?.decode()?.to_luma8();
+    //depth.save("/tmp/foo.png")?;
     assert_eq!(img.dimensions(), depth.dimensions());
+
+    let mut test_image: ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+        ImageBuffer::new(img.dimensions().0, img.dimensions().1);
+
+    if let Some(before_path) = &args.before_path {
+        if let Some(mask_path) = &args.mask_path {
+            let before = ImageReader::open(&before_path)?.decode()?.to_rgba8();
+            let mask = ImageReader::open(&mask_path)?.decode()?.to_luma8();
+            for (i, (((maskrow, beforerow), afterrow), depthrow)) in mask
+                .rows()
+                .zip(before.rows())
+                .zip(img.rows())
+                .zip(depth.rows_mut())
+                .enumerate()
+            {
+                for (j, (((mask, before), after), depth)) in maskrow
+                    .zip(beforerow)
+                    .zip(afterrow)
+                    .zip(depthrow)
+                    .enumerate()
+                {
+                    let beforev =
+                        Vector3::new(before.0[0] as f32, before.0[1] as f32, before.0[2] as f32);
+                    let afterv =
+                        Vector3::new(after.0[0] as f32, after.0[1] as f32, after.0[2] as f32);
+                    if (afterv - beforev).abs().magnitude() < 30.0 && mask.0[0] > 200 {
+                        if mask.0[0] > 200 {
+                            depth.0[0] = 0;
+                            test_image.get_pixel_mut(j as u32, i as u32).0[0] = 255;
+                        } else {
+                            // Max depth to avoid background shading, probably a better way to do this by adding a mask input to the compute shader
+                            depth.0[0] = 255;
+                            test_image.get_pixel_mut(j as u32, i as u32).0[1] = 255;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    //test_image.save("/tmp/foo2.png")?;
     Ok((img, depth))
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -329,16 +428,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (_window, display) = open_display(&events_loop, dims.0, dims.1);
 
-    dbg!(display.get_opengl_vendor_string());
-    dbg!(
-        display.get_supported_glsl_version(),
-        display.get_opengl_version()
-    );
-    let mut renderer = Renderer::new(display, image, depth, true)?;
+    let mut renderer = Renderer::new(display, image, depth, true, args.mask_path.is_none())?;
 
     let mut changed = true;
     let mut img_count = 0;
-    let mut toggle = false;
+    let mut toggle = true;
     events_loop.run(move |e, _, ctrl| match e {
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('a'),

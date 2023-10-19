@@ -98,6 +98,7 @@ void main() {
 
         float prod = sum1 * sum2 * sum3 * sum4 * sum5 * sum6 * sum7 * sum8;
 
+
         int min_idx = 4;
         if (abs(prod) > 1e-6) {
             float min_depth = 9999.0;

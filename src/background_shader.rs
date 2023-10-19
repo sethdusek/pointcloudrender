@@ -2,8 +2,7 @@ use std::rc::Rc;
 
 use glium::{
     buffer::Buffer, framebuffer::SimpleFrameBuffer, glutin::surface::WindowSurface,
-    program::ComputeShader, uniform, uniforms::MagnifySamplerFilter,
-    Display, Surface, Texture2d,
+    program::ComputeShader, uniform, uniforms::MagnifySamplerFilter, Display, Surface, Texture2d,
 };
 
 pub struct BackgroundShader {
@@ -115,14 +114,6 @@ impl BackgroundShader {
             dims.1 / 8 + dims.1 % 8,
             1,
         );
-        //fence.wait();
-        // self.shader.execute(
-        //     uniforms,
-        //     dims.0,
-        //     dims.1,
-        //     1,
-        // );
-        //self.count() == 0
     }
     pub fn run(
         &mut self,
