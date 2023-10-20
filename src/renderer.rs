@@ -45,8 +45,8 @@ impl Renderer {
         let dims = image.dimensions();
         let program = Program::from_source(
             &display,
-            include_str!("vertex.glsl"),
-            include_str!("fragment.glsl"),
+            include_str!("shaders/vertex.glsl"),
+            include_str!("shaders/fragment.glsl"),
             None,
         )?;
         let mut vertices = Vec::with_capacity((dims.0 * dims.1) as usize);
