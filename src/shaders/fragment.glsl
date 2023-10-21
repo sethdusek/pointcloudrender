@@ -1,6 +1,6 @@
-#version 330 core
+#version 460 core
 
-in vec4 fcolor;
+layout(location=0)in vec4 fcolor;
 //in float depth;
 out vec4 color_out;
 out float depth_out;

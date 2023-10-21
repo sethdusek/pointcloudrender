@@ -1,7 +1,6 @@
-use std::{rc::Rc, borrow::Cow};
+use std::{borrow::Cow, rc::Rc};
 
 use glium::{
-
     framebuffer::{MultiOutputFrameBuffer, SimpleFrameBuffer},
     glutin::surface::WindowSurface,
     implement_vertex,
@@ -11,9 +10,7 @@ use glium::{
 use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
 
-
-use crate::{view_params::ViewParams, background_shader::BackgroundShader};
-
+use crate::{background_shader::BackgroundShader, view_params::ViewParams};
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -250,8 +247,17 @@ impl Renderer {
         unsafe {
             let output: RawImage2d<'static, f32> =
                 depth_texture.unchecked_read::<RawImage2d<'static, f32>, f32>();
-            let image_buffer: ImageBuffer<image::Luma<u8>, Vec<u8>> = ImageBuffer::from_vec(output.width, output.height,
-            output.data.iter().copied().map(|f| (f * 255.0) as u8).collect::<Vec<u8>>()).unwrap();
+            let image_buffer: ImageBuffer<image::Luma<u8>, Vec<u8>> = ImageBuffer::from_vec(
+                output.width,
+                output.height,
+                output
+                    .data
+                    .iter()
+                    .copied()
+                    .map(|f| (f * 255.0) as u8)
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap();
 
             let image = image::DynamicImage::ImageLuma8(image_buffer).flipv();
 

@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = { version = "1.14.0", features = ["derive"] }
 clap = { version = "4.4.6", features = ["derive"] }
 float-ord = "0.3.2"
 glium = { git = "https://github.com/glium/glium.git" }
@@ -13,5 +14,7 @@ glutin = "0.30.4"
 glutin-winit = "0.3.0"
 image = "0.24.7"
 nalgebra = "0.32.3"
+pollster = "0.3.0"
 raw-window-handle = "0.5"
+wgpu = "0.17.1"
 winit = "0.28.7"

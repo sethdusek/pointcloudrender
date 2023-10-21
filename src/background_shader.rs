@@ -18,7 +18,8 @@ impl BackgroundShader {
         display: Rc<Display<WindowSurface>>,
         dims: (u32, u32),
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let shader = ComputeShader::from_source(&*display, include_str!("shaders/background_shader.glsl"))?;
+        let shader =
+            ComputeShader::from_source(&*display, include_str!("shaders/background_shader.glsl"))?;
         let buffers = [
             (
                 Texture2d::empty_with_format(

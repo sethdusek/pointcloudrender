@@ -1,12 +1,7 @@
-
-
-
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use clap::Parser;
-use glium::{
-    glutin::surface::WindowSurface, Display,
-};
+use glium::{glutin::surface::WindowSurface, Display};
 use nalgebra::Vector3;
 use renderer::Renderer;
 use winit::{
@@ -17,6 +12,7 @@ use winit::{
 mod background_shader;
 mod renderer;
 mod view_params;
+mod wgpu_renderer;
 
 fn open_display(
     event_loop: &winit::event_loop::EventLoop<()>,
@@ -146,9 +142,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (_window, display) = open_display(&events_loop, dims.0, dims.1);
+    let (window, display) = open_display(&events_loop, dims.0, dims.1);
 
-    let mut renderer = Renderer::new(display, image, depth, true, args.mask_path.is_none())?;
+    let mut renderer = pollster::block_on(wgpu_renderer::Renderer::new(
+        window,
+        image.clone(),
+        depth.clone(),
+    ));
+
 
     let mut changed = true;
     let mut img_count = 0;
@@ -161,6 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_pitch(renderer.view_params.pitch() + 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('d'),
@@ -169,6 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_pitch(renderer.view_params.pitch() - 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('q'),
@@ -177,6 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_yaw(renderer.view_params.yaw() + 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('e'),
@@ -185,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_yaw(renderer.view_params.yaw() - 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('w'),
@@ -193,6 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_roll(renderer.view_params.roll() + 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('s'),
@@ -201,6 +207,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             renderer
                 .view_params
                 .set_roll(renderer.view_params.roll() - 0.01);
+            renderer.update_camera();
         }
         Event::WindowEvent {
             event: WindowEvent::ReceivedCharacter('f'),
@@ -209,29 +216,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // set changed to true. this tells the renderer it should take a screenshot on the next frame
             changed = true;
         }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('t'),
-            ..
-        } => {
-            // enable background filling
-            toggle = !toggle;
-        }
+        // Event::WindowEvent {
+        //     event: WindowEvent::ReceivedCharacter('t'),
+        //     ..
+        // } => {
+        //     // enable background filling
+        //     toggle = !toggle;
+        // }
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } => ctrl.set_exit_with_code(0),
 
+        Event::RedrawRequested(..) => {
+            renderer.render().unwrap();
+        }
+
         Event::MainEventsCleared => {
-            renderer.render(toggle).unwrap();
-            if changed {
-                renderer
-                    .save_screenshot(&format!("screenshot-{}.png", img_count))
-                    .unwrap();
-                renderer
-                    .save_depth(&format!("screenshot-depth-{}.png", img_count));
-                img_count += 1;
-                changed = false;
-            }
+            renderer.window.request_redraw();
+            // renderer.render(toggle).unwrap();
+            // if changed {
+            //     renderer
+            //         .save_screenshot(&format!("screenshot-{}.png", img_count))
+            //         .unwrap();
+            //     renderer.save_depth(&format!("screenshot-depth-{}.png", img_count));
+            //     img_count += 1;
+            //     changed = false;
+            // }
         }
         _ => {}
     });
