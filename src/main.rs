@@ -13,6 +13,7 @@ mod background_shader;
 mod renderer;
 mod view_params;
 mod wgpu_renderer;
+mod texture;
 
 fn open_display(
     event_loop: &winit::event_loop::EventLoop<()>,

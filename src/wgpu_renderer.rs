@@ -2,7 +2,7 @@ use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
 use wgpu::util::DeviceExt;
 
-use crate::view_params::ViewParams;
+use crate::{view_params::ViewParams, texture::Texture};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -46,6 +46,7 @@ impl From<ViewParams> for ViewUniform {
     }
 }
 
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub struct Renderer {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -55,6 +56,7 @@ pub struct Renderer {
     vertex_buffer: wgpu::Buffer,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
     pub window: winit::window::Window,
     pub view_params: ViewParams,
@@ -123,8 +125,6 @@ impl Renderer {
         };
         surface.configure(&device, &surface_config);
 
-
-
         let vertex_buffer = Renderer::load_image(&device, image, depth);
         let (view_params, camera_buffer) = Renderer::create_camera_buffer(&device);
         let now = std::time::Instant::now();
@@ -133,6 +133,9 @@ impl Renderer {
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
         );
+
+        let depth_texture = Texture::new_depth(&device, &surface_config, DEPTH_FORMAT);
+
         Renderer {
             surface,
             device,
@@ -142,6 +145,7 @@ impl Renderer {
             vertex_buffer,
             camera_buffer,
             camera_bind_group,
+            depth_texture,
             view_params,
             render_pipeline,
             window,
@@ -163,7 +167,6 @@ impl Renderer {
         for (y, (r1, r2)) in image.rows().zip(depth.rows()).enumerate() {
             for (x, (c1, c2)) in r1.zip(r2).enumerate() {
                 vertices.push(Vertex {
-                    // TODO: wgpu uses -1 to 1.0 for x/y and 0.0 to 1.0 for z. For now I'll map this to wgpu coordinates but revert later to opengl-to-wgpu conversion
                     position: [
                         (x as f32 / dims.0 as f32) * 2.0 - 1.0,
                         // Top of the screen is +1 in OpenGL
@@ -267,7 +270,13 @@ impl Renderer {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default()
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -308,7 +317,14 @@ impl Renderer {
                         store: true,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: true
+                    }),
+                    stencil_ops: None,
+                    view: &self.depth_texture.texture_view
+                }),
             });
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
