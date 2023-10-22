@@ -2,7 +2,7 @@ use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
 use wgpu::util::DeviceExt;
 
-use crate::{view_params::ViewParams, texture::Texture};
+use crate::{texture::Texture, view_params::ViewParams};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -56,6 +56,7 @@ pub struct Renderer {
     vertex_buffer: wgpu::Buffer,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    target_texture: Texture,
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
     pub window: winit::window::Window,
@@ -88,7 +89,7 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::POLYGON_MODE_POINT,
+                    features: wgpu::Features::POLYGON_MODE_POINT | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                     limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -113,7 +114,7 @@ impl Renderer {
         let surface_config = wgpu::SurfaceConfiguration {
             // I'm guessing we need TEXTURE_BINDING to use in a compute shader
             usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
@@ -128,13 +129,29 @@ impl Renderer {
         let vertex_buffer = Renderer::load_image(&device, image, depth);
         let (view_params, camera_buffer) = Renderer::create_camera_buffer(&device);
         let now = std::time::Instant::now();
-        let (camera_bind_group, render_pipeline ) = Renderer::create_pipeline(&device, &camera_buffer, &surface_config);
+        let (camera_bind_group, render_pipeline) =
+            Renderer::create_pipeline(&device, &camera_buffer, &surface_config);
         println!(
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
         );
 
-        let depth_texture = Texture::new_depth(&device, &surface_config, DEPTH_FORMAT);
+        let target_texture = Texture::new(
+            &device,
+            &surface_config,
+            surface_config.format,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            "Render Buffer",
+        );
+        let depth_texture = Texture::new(
+            &device,
+            &surface_config,
+            DEPTH_FORMAT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+            "Depth Buffer",
+        );
 
         Renderer {
             surface,
@@ -145,6 +162,7 @@ impl Renderer {
             vertex_buffer,
             camera_buffer,
             camera_bind_group,
+            target_texture,
             depth_texture,
             view_params,
             render_pipeline,
@@ -171,7 +189,8 @@ impl Renderer {
                         (x as f32 / dims.0 as f32) * 2.0 - 1.0,
                         // Top of the screen is +1 in OpenGL
                         (y as f32 / dims.1 as f32) * -2.0 + 1.0,
-                        ((c2.0[0] - min_depth) as f32 / (max_depth - min_depth as f32)) * -2.0 + 0.9,
+                        ((c2.0[0] - min_depth) as f32 / (max_depth - min_depth as f32)) * -2.0
+                            + 0.9,
                     ],
                     color: [
                         c1.0[0] as f32 / 255.0,
@@ -275,7 +294,7 @@ impl Renderer {
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default()
+                bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
@@ -289,13 +308,15 @@ impl Renderer {
 
     pub fn update_camera(&mut self) {
         let view_uniform = ViewUniform::from(self.view_params);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[view_uniform]));
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[view_uniform]),
+        );
     }
     pub fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = &self.target_texture.texture_view;
         let mut command_encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -320,10 +341,10 @@ impl Renderer {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: true
+                        store: true,
                     }),
                     stencil_ops: None,
-                    view: &self.depth_texture.texture_view
+                    view: &self.depth_texture.texture_view,
                 }),
             });
             render_pass.set_pipeline(&self.render_pipeline);
@@ -332,8 +353,30 @@ impl Renderer {
             render_pass.draw(
                 0..(self.vertex_buffer.size() as usize / std::mem::size_of::<Vertex>()) as u32,
                 0..1,
-            )
+            );
         }
+        let output_view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        command_encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.target_texture.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: &output.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.surface_config.width,
+                height: self.surface_config.height,
+                depth_or_array_layers: 1,
+            },
+        );
         self.queue.submit(std::iter::once(command_encoder.finish()));
         output.present();
         Ok(())

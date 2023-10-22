@@ -11,9 +11,9 @@ use winit::{
 
 mod background_shader;
 mod renderer;
+mod texture;
 mod view_params;
 mod wgpu_renderer;
-mod texture;
 
 fn open_display(
     event_loop: &winit::event_loop::EventLoop<()>,
@@ -150,7 +150,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         image.clone(),
         depth.clone(),
     ));
-
 
     let mut changed = true;
     let mut img_count = 0;
