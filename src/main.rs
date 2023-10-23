@@ -213,8 +213,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             event: WindowEvent::ReceivedCharacter('f'),
             ..
         } => {
-            // set changed to true. this tells the renderer it should take a screenshot on the next frame
-            changed = true;
+            let now = std::time::Instant::now();
+                renderer
+                    .save_screenshot(&format!("screenshot-{img_count}.png"))
+                    .unwrap();
+            println!("Screenshot saved to screenshot-{img_count}.png in {:?}", std::time::Instant::now() - now);
+            img_count+=1;
         }
         // Event::WindowEvent {
         //     event: WindowEvent::ReceivedCharacter('t'),

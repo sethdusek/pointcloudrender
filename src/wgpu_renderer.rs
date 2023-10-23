@@ -89,7 +89,8 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::POLYGON_MODE_POINT | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                    features: wgpu::Features::POLYGON_MODE_POINT
+                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                     limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -104,6 +105,7 @@ impl Renderer {
             .copied()
             .find(|f| !f.is_srgb()) // TODO: to srgb or not to srgb?
             .unwrap_or(surface_caps.formats[0]);
+        dbg!(surface_format);
 
         let present_mode = surface_caps
             .present_modes
@@ -355,9 +357,6 @@ impl Renderer {
                 0..1,
             );
         }
-        let output_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
         command_encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
                 texture: &self.target_texture.texture,
@@ -379,6 +378,82 @@ impl Renderer {
         );
         self.queue.submit(std::iter::once(command_encoder.finish()));
         output.present();
+        Ok(())
+    }
+
+    fn read_texture(&self, texture: &wgpu::Texture) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let bpp = texture.format().block_size(None).unwrap();
+        // let bpp = match texture.format() {
+        //     wgpu::TextureFormat::
+        // }
+        let row_bytes = (bpp * texture.width()) as u64;
+        let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64;
+        let padding = (alignment - row_bytes % alignment) % alignment;
+        let padded_row_bytes = row_bytes + padding;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("CPU Buffer"),
+            size: padded_row_bytes * texture.height() as u64,
+            mapped_at_creation: false,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        });
+
+        let mut command_encoder =
+            self.device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("screenshot_encoder"),
+                });
+        let size = wgpu::Extent3d {
+            width: texture.width(),
+            height: texture.height(),
+            depth_or_array_layers: 1,
+        };
+        command_encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyBuffer {
+                buffer: &buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some((padded_row_bytes as u32).try_into()?),
+                    rows_per_image: None,
+                },
+            },
+            size,
+        );
+        self.queue.submit(std::iter::once(command_encoder.finish()));
+        let slice = buffer.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |r| r.unwrap());
+        self.device.poll(wgpu::Maintain::Wait);
+
+        let mut output_buffer: Vec<u8> =
+            Vec::with_capacity((row_bytes * texture.height() as u64) as usize);
+        let slice_view = slice.get_mapped_range();
+        for chunk in slice_view.chunks(padded_row_bytes as usize) {
+            output_buffer.extend(&chunk[..row_bytes as usize]);
+        }
+        std::mem::drop(slice_view);
+
+        Ok(output_buffer)
+    }
+    pub fn save_screenshot(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut buf = self.read_texture(&self.target_texture.texture).unwrap();
+        // Convert bgra to rgba
+        if let wgpu::TextureFormat::Bgra8Unorm = self.target_texture.texture.format() {
+            for chunk in buf.chunks_mut(4) {
+                chunk.swap(0, 2);
+            }
+        }
+        let image: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_vec(
+            self.target_texture.texture.width(),
+            self.target_texture.texture.height(),
+            buf,
+        )
+        .unwrap();
+        image.save(path)?;
         Ok(())
     }
 }
