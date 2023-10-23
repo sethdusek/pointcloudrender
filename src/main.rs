@@ -75,6 +75,8 @@ fn open_display(
 
 #[derive(Parser)]
 struct Args {
+    #[arg(long)]
+    headless: bool,
     image_path: String,
     depth_path: String,
     before_path: Option<String>,
@@ -143,7 +145,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (window, display) = open_display(&events_loop, dims.0, dims.1);
+    let (window, display) = if !args.headless {
+        let (window, display) = open_display(&events_loop, dims.0, dims.1);
+        (Some(window), Some(display))
+    } else {
+        (None, None)
+    };
 
     let mut renderer = pollster::block_on(wgpu_renderer::Renderer::new(
         window,
@@ -151,103 +158,124 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         depth.clone(),
     ));
 
-    let mut changed = true;
-    let mut img_count = 0;
-    let mut toggle = true;
-    events_loop.run(move |e, _, ctrl| match e {
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('a'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_pitch(renderer.view_params.pitch() + 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('d'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_pitch(renderer.view_params.pitch() - 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('q'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_yaw(renderer.view_params.yaw() + 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('e'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_yaw(renderer.view_params.yaw() - 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('w'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_roll(renderer.view_params.roll() + 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('s'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_roll(renderer.view_params.roll() - 0.01);
-            renderer.update_camera();
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('f'),
-            ..
-        } => {
-            let now = std::time::Instant::now();
+    if args.headless {
+        renderer.render().unwrap();
+        renderer.save_screenshot("/tmp/foo.png").unwrap();
+        renderer
+            .view_params
+            .set_pitch(renderer.view_params.pitch() + 0.01);
+        renderer.update_camera();
+        renderer.render().unwrap();
+        renderer.save_screenshot("/tmp/foo2.png").unwrap();
+    } else {
+        let mut changed = true;
+        let mut img_count = 0;
+        let mut toggle = true;
+
+        events_loop.run(move |e, _, ctrl| match e {
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('a'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_pitch(renderer.view_params.pitch() + 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('d'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_pitch(renderer.view_params.pitch() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('q'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_yaw(renderer.view_params.yaw() + 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('e'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_yaw(renderer.view_params.yaw() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('w'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_roll(renderer.view_params.roll() + 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('s'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_roll(renderer.view_params.roll() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('f'),
+                ..
+            } => {
+                let now = std::time::Instant::now();
                 renderer
                     .save_screenshot(&format!("screenshot-{img_count}.png"))
                     .unwrap();
-            println!("Screenshot saved to screenshot-{img_count}.png in {:?}", std::time::Instant::now() - now);
-            img_count+=1;
-        }
-        // Event::WindowEvent {
-        //     event: WindowEvent::ReceivedCharacter('t'),
-        //     ..
-        // } => {
-        //     // enable background filling
-        //     toggle = !toggle;
-        // }
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => ctrl.set_exit_with_code(0),
-
-        Event::RedrawRequested(..) => {
-            renderer.render().unwrap();
-        }
-
-        Event::MainEventsCleared => {
-            renderer.window.request_redraw();
-            // renderer.render(toggle).unwrap();
-            // if changed {
-            //     renderer
-            //         .save_screenshot(&format!("screenshot-{}.png", img_count))
-            //         .unwrap();
-            //     renderer.save_depth(&format!("screenshot-depth-{}.png", img_count));
-            //     img_count += 1;
-            //     changed = false;
+                println!(
+                    "Screenshot saved to screenshot-{img_count}.png in {:?}",
+                    std::time::Instant::now() - now
+                );
+                img_count += 1;
+            }
+            // Event::WindowEvent {
+            //     event: WindowEvent::ReceivedCharacter('t'),
+            //     ..
+            // } => {
+            //     // enable background filling
+            //     toggle = !toggle;
             // }
-        }
-        _ => {}
-    });
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => ctrl.set_exit_with_code(0),
+
+            Event::RedrawRequested(..) => {
+                renderer.render().unwrap();
+            }
+
+            Event::MainEventsCleared => {
+                renderer
+                    .head_state
+                    .as_ref()
+                    .unwrap()
+                    .window
+                    .request_redraw();
+                // renderer.render(toggle).unwrap();
+                // if changed {
+                //     renderer
+                //         .save_screenshot(&format!("screenshot-{}.png", img_count))
+                //         .unwrap();
+                //     renderer.save_depth(&format!("screenshot-depth-{}.png", img_count));
+                //     img_count += 1;
+                //     changed = false;
+                // }
+            }
+            _ => {}
+        });
+    }
+    Ok(())
 }

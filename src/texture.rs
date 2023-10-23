@@ -8,14 +8,14 @@ pub struct Texture {
 impl Texture {
     pub fn new(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        (width, height): (u32, u32),
         format: wgpu::TextureFormat,
         texture_usage: wgpu::TextureUsages,
         label: &str,
     ) -> Texture {
         let size = wgpu::Extent3d {
-            width: config.width,
-            height: config.height,
+            width,
+            height,
             depth_or_array_layers: 1,
         };
         let texture = device.create_texture(&wgpu::TextureDescriptor {

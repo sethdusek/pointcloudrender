@@ -47,66 +47,29 @@ impl From<ViewParams> for ViewUniform {
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-pub struct Renderer {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface_config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
-    vertex_buffer: wgpu::Buffer,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
-    target_texture: Texture,
-    depth_texture: Texture,
-    render_pipeline: wgpu::RenderPipeline,
+
+// Describes state of window (and surface)
+pub struct HeadState {
     pub window: winit::window::Window,
-    pub view_params: ViewParams,
+    pub surface: wgpu::Surface,
+    surface_config: wgpu::SurfaceConfiguration,
 }
 
-impl Renderer {
-    pub async fn new(
+impl HeadState {
+    fn from_surface(
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
         window: winit::window::Window,
-        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-        depth: ImageBuffer<Luma<u8>, Vec<u8>>,
+        surface: wgpu::Surface,
     ) -> Self {
         let size = window.inner_size();
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
-            dx12_shader_compiler: Default::default(),
-        });
-
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::POLYGON_MODE_POINT
-                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-                    limits: wgpu::Limits::default(),
-                    label: None,
-                },
-                None,
-            )
-            .await
-            .unwrap();
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
             .formats
             .iter()
             .copied()
-            .find(|f| !f.is_srgb()) // TODO: to srgb or not to srgb?
+            .find(|f| !dbg!(f).is_srgb()) // TODO: to srgb or not to srgb?
             .unwrap_or(surface_caps.formats[0]);
-        dbg!(surface_format);
-
         let present_mode = surface_caps
             .present_modes
             .iter()
@@ -128,11 +91,87 @@ impl Renderer {
         };
         surface.configure(&device, &surface_config);
 
+        dbg!(surface_format);
+
+        HeadState {
+            window,
+            surface,
+            surface_config,
+        }
+    }
+}
+pub struct Renderer {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    vertex_buffer: wgpu::Buffer,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+    target_texture: Texture,
+    depth_texture: Texture,
+    render_pipeline: wgpu::RenderPipeline,
+    pub view_params: ViewParams,
+    pub head_state: Option<HeadState>,
+}
+
+impl Renderer {
+    pub async fn new(
+        window: Option<winit::window::Window>,
+        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+        depth: ImageBuffer<Luma<u8>, Vec<u8>>,
+    ) -> Self {
+        let size = image.dimensions();
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            dx12_shader_compiler: Default::default(),
+        });
+
+        let surface = window
+            .as_ref()
+            .map(|window| unsafe { instance.create_surface(&window).unwrap() });
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: surface.as_ref(),
+                force_fallback_adapter: false,
+            })
+            .await
+            .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    features: wgpu::Features::POLYGON_MODE_POINT
+                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                    limits: wgpu::Limits::default(),
+                    label: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let head_state = if let Some(window) = window {
+            Some(HeadState::from_surface(
+                &device,
+                &adapter,
+                window,
+                surface.unwrap(),
+            ))
+        } else {
+            None
+        };
+        let texture_format = head_state
+            .as_ref()
+            .map(|hs| hs.surface_config.format)
+            .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
+        // Generate buffers and other on-device resources
         let vertex_buffer = Renderer::load_image(&device, image, depth);
         let (view_params, camera_buffer) = Renderer::create_camera_buffer(&device);
         let now = std::time::Instant::now();
         let (camera_bind_group, render_pipeline) =
-            Renderer::create_pipeline(&device, &camera_buffer, &surface_config);
+            Renderer::create_pipeline(&device, &camera_buffer, texture_format, size.0, size.1);
         println!(
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
@@ -140,8 +179,8 @@ impl Renderer {
 
         let target_texture = Texture::new(
             &device,
-            &surface_config,
-            surface_config.format,
+            size,
+            texture_format,
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::COPY_SRC,
@@ -149,18 +188,15 @@ impl Renderer {
         );
         let depth_texture = Texture::new(
             &device,
-            &surface_config,
+            size,
             DEPTH_FORMAT,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
             "Depth Buffer",
         );
 
         Renderer {
-            surface,
             device,
             queue,
-            surface_config,
-            size,
             vertex_buffer,
             camera_buffer,
             camera_bind_group,
@@ -168,7 +204,7 @@ impl Renderer {
             depth_texture,
             view_params,
             render_pipeline,
-            window,
+            head_state,
         }
     }
 
@@ -233,7 +269,9 @@ impl Renderer {
     fn create_pipeline(
         device: &wgpu::Device,
         camera_buffer: &wgpu::Buffer,
-        surface_config: &wgpu::SurfaceConfiguration,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
     ) -> (wgpu::BindGroup, wgpu::RenderPipeline) {
         let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/raster.wgsl"));
 
@@ -276,7 +314,7 @@ impl Renderer {
                 module: &raster_shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_config.format,
+                    format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -317,7 +355,11 @@ impl Renderer {
         );
     }
     pub fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let output = self.surface.get_current_texture()?;
+        let output = self
+            .head_state
+            .as_ref()
+            .map(|hs| hs.surface.get_current_texture())
+            .transpose()?;
         let view = &self.target_texture.texture_view;
         let mut command_encoder =
             self.device
@@ -357,27 +399,31 @@ impl Renderer {
                 0..1,
             );
         }
-        command_encoder.copy_texture_to_texture(
-            wgpu::ImageCopyTexture {
-                texture: &self.target_texture.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::ImageCopyTexture {
-                texture: &output.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::Extent3d {
-                width: self.surface_config.width,
-                height: self.surface_config.height,
-                depth_or_array_layers: 1,
-            },
-        );
+        if let Some(output) = &output {
+            command_encoder.copy_texture_to_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.target_texture.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyTexture {
+                    texture: &output.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: output.texture.width(),
+                    height: output.texture.height(),
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
         self.queue.submit(std::iter::once(command_encoder.finish()));
-        output.present();
+        if let Some(output) = output {
+            output.present();
+        }
         Ok(())
     }
 
