@@ -1,3 +1,4 @@
+use headless::HeadlessRenderer;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use clap::Parser;
@@ -10,6 +11,7 @@ use winit::{
 };
 
 mod background_shader;
+mod headless;
 mod renderer;
 mod texture;
 mod view_params;
@@ -159,14 +161,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     if args.headless {
-        renderer.render().unwrap();
-        renderer.save_screenshot("/tmp/foo.png").unwrap();
-        renderer
-            .view_params
-            .set_pitch(renderer.view_params.pitch() + 0.01);
-        renderer.update_camera();
-        renderer.render().unwrap();
-        renderer.save_screenshot("/tmp/foo2.png").unwrap();
+        let mut headless_renderer = HeadlessRenderer::new(renderer);
+        headless_renderer.run()?;
     } else {
         let mut changed = true;
         let mut img_count = 0;
