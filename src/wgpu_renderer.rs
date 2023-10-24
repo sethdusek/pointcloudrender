@@ -2,7 +2,7 @@ use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
 use wgpu::util::DeviceExt;
 
-use crate::{texture::Texture, view_params::ViewParams};
+use crate::{background_shader_wgpu::BackgroundShader, texture::Texture, view_params::ViewParams};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -46,7 +46,7 @@ impl From<ViewParams> for ViewUniform {
     }
 }
 
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 // Describes state of window (and surface)
 pub struct HeadState {
@@ -109,6 +109,7 @@ pub struct Renderer {
     target_texture: Texture,
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
+    background_shader: Option<BackgroundShader>,
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
 }
@@ -118,6 +119,7 @@ impl Renderer {
         window: Option<winit::window::Window>,
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
+        background_filling: bool,
     ) -> Self {
         let size = image.dimensions();
 
@@ -194,6 +196,12 @@ impl Renderer {
             "Depth Buffer",
         );
 
+        let background_shader = if background_filling {
+            Some(BackgroundShader::new(&device, size))
+        } else {
+            None
+        };
+
         Renderer {
             device,
             queue,
@@ -204,6 +212,7 @@ impl Renderer {
             depth_texture,
             view_params,
             render_pipeline,
+            background_shader,
             head_state,
         }
     }
@@ -421,7 +430,32 @@ impl Renderer {
             );
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));
+
         if let Some(output) = output {
+            if let Some(background_shader) = &self.background_shader {
+                let mut command_encoder = self.device.create_command_encoder(&Default::default());
+                background_shader.run(&self.device, &self.queue, &self.target_texture);
+                command_encoder.copy_texture_to_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &background_shader.textures[1].0.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::ImageCopyTexture {
+                        texture: &output.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: output.texture.width(),
+                        height: output.texture.height(),
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+
             output.present();
         }
         Ok(())

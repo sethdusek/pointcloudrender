@@ -11,6 +11,7 @@ use winit::{
 };
 
 mod background_shader;
+mod background_shader_wgpu;
 mod headless;
 mod renderer;
 mod texture;
@@ -147,17 +148,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (window, display) = if !args.headless {
-        let (window, display) = open_display(&events_loop, dims.0, dims.1);
-        (Some(window), Some(display))
+    let window = if !args.headless {
+        let window = winit::window::WindowBuilder::new()
+            .with_inner_size(winit::dpi::PhysicalSize::new(dims.0, dims.1))
+            .build(&events_loop)?;
+        //let (window, display) = open_display(&events_loop, dims.0, dims.1);
+        Some(window)
     } else {
-        (None, None)
+        None
     };
 
     let mut renderer = pollster::block_on(wgpu_renderer::Renderer::new(
         window,
         image.clone(),
         depth.clone(),
+        true,
     ));
 
     if args.headless {
