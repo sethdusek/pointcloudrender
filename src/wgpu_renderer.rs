@@ -126,6 +126,8 @@ impl Renderer {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::from_build_config(), // bless wgpu for adding this feature
+            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
         });
 
         let surface = window
@@ -145,7 +147,8 @@ impl Renderer {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::POLYGON_MODE_POINT
-                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                        | wgpu::Features::BGRA8UNORM_STORAGE,
                     limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -185,7 +188,7 @@ impl Renderer {
             texture_format,
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
+                | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
             "Render Buffer",
         );
         let depth_texture = Texture::new(
@@ -388,17 +391,19 @@ impl Renderer {
                             b: 0.0,
                             a: 1.0,
                         }),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                     view: &self.depth_texture.texture_view,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -408,6 +413,30 @@ impl Renderer {
                 0..1,
             );
         }
+
+        if let Some(background_shader) = &self.background_shader {
+            background_shader.run(&self.device, &mut command_encoder, &self.target_texture);
+            command_encoder.copy_texture_to_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &background_shader.textures[1].0.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyTexture {
+                    texture: &self.target_texture.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: self.target_texture.texture.width(),
+                    height: self.target_texture.texture.height(),
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+
         if let Some(output) = &output {
             command_encoder.copy_texture_to_texture(
                 wgpu::ImageCopyTexture {
@@ -431,31 +460,8 @@ impl Renderer {
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
+        // TODO: clean up this mess
         if let Some(output) = output {
-            if let Some(background_shader) = &self.background_shader {
-                let mut command_encoder = self.device.create_command_encoder(&Default::default());
-                background_shader.run(&self.device, &self.queue, &self.target_texture);
-                command_encoder.copy_texture_to_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &background_shader.textures[1].0.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::ImageCopyTexture {
-                        texture: &output.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::Extent3d {
-                        width: output.texture.width(),
-                        height: output.texture.height(),
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
-
             output.present();
         }
         Ok(())

@@ -112,14 +112,16 @@ impl BackgroundShader {
         (compute_bind_group, compute_pipeline)
     }
 
-    pub fn run(&self, device: &wgpu::Device, queue: &wgpu::Queue, initial_texture: &Texture) {
+    pub fn run(
+        &self,
+        device: &wgpu::Device,
+        command_encoder: &mut wgpu::CommandEncoder,
+        initial_texture: &Texture,
+    ) {
         let dims = (
             initial_texture.texture.width(),
             initial_texture.texture.height(),
         );
-        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("command_encoder"),
-        });
         command_encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
                 texture: &initial_texture.texture,
@@ -136,19 +138,19 @@ impl BackgroundShader {
             wgpu::Extent3d {
                 width: dims.0,
                 height: dims.1,
-                depth_or_array_layers: 0,
+                depth_or_array_layers: 1,
             },
         );
         {
             let mut compute_pass =
                 command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("bf_compute_pass"),
+                    ..Default::default()
                 });
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.bindgroup, &[]);
-            compute_pass.dispatch_workgroups(dims.0, dims.1, 1);
+            compute_pass.dispatch_workgroups((dims.0 + 7) / 8, (dims.1 + 7) / 8, 1);
+            compute_pass.dispatch_workgroups((dims.0 + 7) / 8, (dims.1 + 7) / 8, 1);
         }
-        let command_buffer = command_encoder.finish();
-        queue.submit(std::iter::once(command_buffer));
     }
 }
