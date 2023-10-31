@@ -105,7 +105,7 @@ void main() {
             for (int i = 0; i < 9; i++) {
                 if (neighbors[i] < min_depth) {
                     min_idx = i;
-                    min_depth = min_depth;
+                    min_depth = neighbors[i];
                 }
             }
             // Mark background filling as incomplete
