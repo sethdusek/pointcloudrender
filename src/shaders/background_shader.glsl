@@ -41,7 +41,7 @@ void main() {
         c_load(i + offsets[6]).r, c_load(i + offsets[7]).r, c_load(i + offsets[8]).r
     };
 
-    if (abs(neighbors[4]) > 1e-5) {
+    if (abs(neighbors[4]) > 1e-6) {
         imageStore(output_image, i, load);
         imageStore(output_depth, i, vec4(neighbors[4]));
     }
@@ -103,9 +103,9 @@ void main() {
         if (abs(prod) > 1e-6) {
             float min_depth = 9999.0;
             for (int i = 0; i < 9; i++) {
-                if (neighbors[i] < min_depth) {
+                if (abs(neighbors[i]) < min_depth && abs(neighbors[i]) > 1e-6) {
                     min_idx = i;
-                    min_depth = neighbors[i];
+                    min_depth = abs(neighbors[i]);
                 }
             }
             // Mark background filling as incomplete
