@@ -1,8 +1,8 @@
 use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, include_wgsl};
 
-use crate::{background_shader_wgpu::BackgroundShader, texture::Texture, view_params::ViewParams};
+use crate::{filling_shader_wgpu::FillingShader, texture::Texture, view_params::ViewParams};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -102,6 +102,7 @@ impl HeadState {
         }
     }
 }
+
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -113,7 +114,7 @@ pub struct Renderer {
     target_depth: Texture,
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
-    background_shader: Option<BackgroundShader>,
+    background_shader: Option<FillingShader>,
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
     pub background_shading_iters: u32
@@ -221,7 +222,7 @@ impl Renderer {
         );
 
         let background_shader = if background_filling {
-            Some(BackgroundShader::new(&device, size))
+            Some(FillingShader::new(&device, size, wgpu::include_wgsl!("shaders/background_shader.wgsl")))
         } else {
             None
         };
@@ -462,7 +463,6 @@ impl Renderer {
         if let Some(background_shader) = &self.background_shader {
             if background_filling_toggle {
                 background_shader.run(
-                    &self.device,
                     &mut command_encoder,
                     &self.target_texture,
                     &self.target_depth,

@@ -11,7 +11,7 @@ use winit::{
 };
 
 mod background_shader;
-mod background_shader_wgpu;
+mod filling_shader_wgpu;
 mod headless;
 mod renderer;
 mod texture;
