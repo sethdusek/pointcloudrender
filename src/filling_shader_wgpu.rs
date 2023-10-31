@@ -10,7 +10,11 @@ pub struct FillingShader {
 }
 
 impl FillingShader {
-    pub fn new(device: &wgpu::Device, dims: (u32, u32), shader: wgpu::ShaderModuleDescriptor) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        dims: (u32, u32),
+        shader: wgpu::ShaderModuleDescriptor,
+    ) -> Self {
         // TODO: can't bind depth textures to compute shaders. also change flags for compute
         let textures = [
             (
@@ -64,8 +68,12 @@ impl FillingShader {
                 | wgpu::BufferUsages::MAP_WRITE
                 | wgpu::BufferUsages::UNIFORM,
         });
-        let (bindgroups, compute_pipeline) =
-            FillingShader::create_compute_pipeline(&device, &textures, &convergence_tracker, shader);
+        let (bindgroups, compute_pipeline) = FillingShader::create_compute_pipeline(
+            &device,
+            &textures,
+            &convergence_tracker,
+            shader,
+        );
         FillingShader {
             textures,
             convergence_tracker,
@@ -78,7 +86,7 @@ impl FillingShader {
         device: &wgpu::Device,
         textures: &[(Texture, Texture); 2],
         convergence_tracker: &wgpu::Buffer,
-        shader: wgpu::ShaderModuleDescriptor
+        shader: wgpu::ShaderModuleDescriptor,
     ) -> ([wgpu::BindGroup; 2], wgpu::ComputePipeline) {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("CS Bindgroup Layout"),
@@ -183,8 +191,7 @@ impl FillingShader {
             ),
         ];
 
-        let compute_shader =
-            device.create_shader_module(shader);
+        let compute_shader = device.create_shader_module(shader);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("background_filling_layout"),
             bind_group_layouts: &[&bind_group_layout],

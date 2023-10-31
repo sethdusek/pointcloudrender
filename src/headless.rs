@@ -56,7 +56,7 @@ impl HeadlessRenderer {
 
             Some(("screenshot", filename)) => {
                 self.renderer.update_camera();
-                self.renderer.render(true)?;
+                self.renderer.render(true, true)?;
                 self.renderer.save_screenshot(filename)?;
             }
             _ => (),

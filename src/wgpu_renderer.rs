@@ -1,6 +1,6 @@
 use image::{ImageBuffer, Luma, Rgba};
 use nalgebra::{Matrix4, Point3};
-use wgpu::{util::DeviceExt, include_wgsl};
+use wgpu::{include_wgsl, util::DeviceExt};
 
 use crate::{filling_shader_wgpu::FillingShader, texture::Texture, view_params::ViewParams};
 
@@ -119,7 +119,7 @@ pub struct Renderer {
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
     pub background_shading_iters: u32,
-    pub occlusion_shading_iters: u32
+    pub occlusion_shading_iters: u32,
 }
 
 impl Renderer {
@@ -128,7 +128,7 @@ impl Renderer {
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
         background_filling: bool,
-        occlusion_filling: bool
+        occlusion_filling: bool,
     ) -> Self {
         let size = image.dimensions();
 
@@ -225,12 +225,20 @@ impl Renderer {
         );
 
         let background_shader = if background_filling {
-            Some(FillingShader::new(&device, size, wgpu::include_wgsl!("shaders/background_shader.wgsl")))
+            Some(FillingShader::new(
+                &device,
+                size,
+                wgpu::include_wgsl!("shaders/background_shader.wgsl"),
+            ))
         } else {
             None
         };
         let occlusion_shader = if occlusion_filling {
-            Some(FillingShader::new(&device, size, wgpu::include_wgsl!("shaders/occlusion_shader.wgsl")))
+            Some(FillingShader::new(
+                &device,
+                size,
+                wgpu::include_wgsl!("shaders/occlusion_shader.wgsl"),
+            ))
         } else {
             None
         };
@@ -250,7 +258,7 @@ impl Renderer {
             occlusion_shader,
             head_state,
             background_shading_iters: 10,
-            occlusion_shading_iters: 10
+            occlusion_shading_iters: 10,
         }
     }
 
@@ -406,7 +414,11 @@ impl Renderer {
             bytemuck::cast_slice(&[view_uniform]),
         );
     }
-    pub fn render(&mut self, background_filling_toggle: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn render(
+        &mut self,
+        background_filling_toggle: bool,
+        occlusion_filling_toggle: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let output = self
             .head_state
             .as_ref()
@@ -469,58 +481,60 @@ impl Renderer {
                 0..1,
             );
         }
+        let mut output_texture = &self.target_texture;
+        let mut output_depth = &self.target_depth;
 
         if let Some(background_shader) = &self.background_shader {
             if background_filling_toggle {
                 background_shader.run(
                     &mut command_encoder,
-                    &self.target_texture,
-                    &self.target_depth,
+                    output_texture,
+                    output_depth,
                     self.background_shading_iters,
                 );
-                command_encoder.copy_texture_to_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &background_shader.textures[1].0.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::ImageCopyTexture {
-                        texture: &self.target_texture.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::Extent3d {
-                        width: self.target_texture.texture.width(),
-                        height: self.target_texture.texture.height(),
-                        depth_or_array_layers: 1,
-                    },
-                );
+                output_texture = &background_shader.textures[1].0;
+                output_depth = &background_shader.textures[1].1;
             }
         }
 
-        if let Some(output) = &output {
-            command_encoder.copy_texture_to_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &self.target_texture.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::ImageCopyTexture {
-                    texture: &output.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: output.texture.width(),
-                    height: output.texture.height(),
-                    depth_or_array_layers: 1,
-                },
-            );
+        if let Some(occlusion_shader) = &self.occlusion_shader {
+            if occlusion_filling_toggle {
+                occlusion_shader.run(
+                    &mut command_encoder,
+                    &output_texture,
+                    &output_depth,
+                    self.occlusion_shading_iters,
+                );
+                output_texture = &occlusion_shader.textures[1].0;
+                output_depth = &occlusion_shader.textures[1].1;
+            }
         }
+
+        let dst = if let Some(output) = &output {
+            &output.texture
+        } else {
+            &self.target_texture.texture
+        };
+
+        command_encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: &output_texture.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: dst,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: dst.width(),
+                height: dst.height(),
+                depth_or_array_layers: 1,
+            },
+        );
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
         // TODO: clean up this mess

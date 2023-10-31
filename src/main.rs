@@ -163,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         image.clone(),
         depth.clone(),
         true,
-        true
+        true,
     ));
 
     if args.headless {
@@ -172,7 +172,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let mut changed = true;
         let mut img_count = 0;
-        let mut toggle = true;
+        let mut background_shading_enabled = true;
+        let mut occlusion_shading_enabled = true;
 
         events_loop.run(move |e, _, ctrl| match e {
             Event::WindowEvent {
@@ -247,22 +248,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 event: WindowEvent::ReceivedCharacter('t'),
                 ..
             } => {
+                background_shading_enabled = !background_shading_enabled;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('y'),
+                ..
+            } => {
                 // enable background filling
-                toggle = !toggle;
+                occlusion_shading_enabled = !occlusion_shading_enabled;
             }
             Event::WindowEvent {
                 event: WindowEvent::ReceivedCharacter('['),
                 ..
             } => {
                 // enable background filling
-                renderer.background_shading_iters = std::cmp::max(1, renderer.background_shading_iters.saturating_sub(1));
+                renderer.background_shading_iters =
+                    std::cmp::max(1, renderer.background_shading_iters.saturating_sub(1));
             }
             Event::WindowEvent {
                 event: WindowEvent::ReceivedCharacter(']'),
                 ..
             } => {
                 // enable background filling
-                renderer.background_shading_iters = renderer.background_shading_iters.saturating_add(1);
+                renderer.background_shading_iters =
+                    renderer.background_shading_iters.saturating_add(1);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter(';'),
+                ..
+            } => {
+                // enable background filling
+                renderer.occlusion_shading_iters =
+                    std::cmp::max(1, renderer.occlusion_shading_iters.saturating_sub(1));
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('\''),
+                ..
+            } => {
+                // enable background filling
+                renderer.occlusion_shading_iters =
+                    renderer.occlusion_shading_iters.saturating_add(1);
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -270,7 +295,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } => ctrl.set_exit_with_code(0),
 
             Event::RedrawRequested(..) => {
-                renderer.render(toggle).unwrap();
+                renderer.render(background_shading_enabled, occlusion_shading_enabled).unwrap();
             }
 
             Event::MainEventsCleared => {
