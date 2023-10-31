@@ -27,8 +27,7 @@ fn main() {
                     if !res.success() {
                         std::process::exit(1);
                     }
-                }
-                else {
+                } else {
                     println!("cargo:warning=Naga could not be called for shader validation");
                 }
             }

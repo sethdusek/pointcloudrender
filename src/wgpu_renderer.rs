@@ -47,6 +47,8 @@ impl From<ViewParams> for ViewUniform {
 }
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+// What gets used in the depth texture used for compute shading
+pub const DEPTH_STORAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
 
 // Describes state of window (and surface)
 pub struct HeadState {
@@ -107,6 +109,8 @@ pub struct Renderer {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     target_texture: Texture,
+    // Target depth is what we render depth to and use in any compute shaders. Depth_texture is what's used for depth testing
+    target_depth: Texture,
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
     background_shader: Option<BackgroundShader>,
@@ -148,7 +152,8 @@ impl Renderer {
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::POLYGON_MODE_POINT
                         | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                        | wgpu::Features::BGRA8UNORM_STORAGE,
+                        | wgpu::Features::BGRA8UNORM_STORAGE
+                        | wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
                     limits: wgpu::Limits::default(),
                     label: None,
                 },
@@ -175,8 +180,12 @@ impl Renderer {
         let vertex_buffer = Renderer::load_image(&device, image, depth);
         let (view_params, camera_buffer) = Renderer::create_camera_buffer(&device);
         let now = std::time::Instant::now();
-        let (camera_bind_group, render_pipeline) =
-            Renderer::create_pipeline(&device, &camera_buffer, texture_format, size.0, size.1);
+        let (camera_bind_group, render_pipeline) = Renderer::create_pipeline(
+            &device,
+            &camera_buffer,
+            texture_format,
+            DEPTH_STORAGE_FORMAT,
+        );
         println!(
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
@@ -188,9 +197,20 @@ impl Renderer {
             texture_format,
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             "Render Buffer",
         );
+        let target_depth = Texture::new(
+            &device,
+            size,
+            DEPTH_STORAGE_FORMAT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            "Depth Render Buffer",
+        );
+
         let depth_texture = Texture::new(
             &device,
             size,
@@ -212,6 +232,7 @@ impl Renderer {
             camera_buffer,
             camera_bind_group,
             target_texture,
+            target_depth,
             depth_texture,
             view_params,
             render_pipeline,
@@ -282,8 +303,7 @@ impl Renderer {
         device: &wgpu::Device,
         camera_buffer: &wgpu::Buffer,
         format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
+        depth_format: wgpu::TextureFormat,
     ) -> (wgpu::BindGroup, wgpu::RenderPipeline) {
         let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/raster.wgsl"));
 
@@ -325,11 +345,18 @@ impl Renderer {
             fragment: Some(wgpu::FragmentState {
                 module: &raster_shader,
                 entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[
+                    Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: depth_format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                ],
             }),
             layout: Some(&render_pipeline_layout),
             primitive: wgpu::PrimitiveState {
@@ -373,6 +400,7 @@ impl Renderer {
             .map(|hs| hs.surface.get_current_texture())
             .transpose()?;
         let view = &self.target_texture.texture_view;
+        let depth_view = &self.target_depth.texture_view;
         let mut command_encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -381,19 +409,34 @@ impl Renderer {
         {
             let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Clear"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &depth_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
@@ -415,7 +458,7 @@ impl Renderer {
         }
 
         if let Some(background_shader) = &self.background_shader {
-            background_shader.run(&self.device, &mut command_encoder, &self.target_texture);
+            background_shader.run(&self.device, &mut command_encoder, &self.target_texture, &self.target_depth, 40);
             command_encoder.copy_texture_to_texture(
                 wgpu::ImageCopyTexture {
                     texture: &background_shader.textures[1].0.texture,
