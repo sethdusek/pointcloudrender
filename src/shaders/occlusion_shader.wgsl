@@ -15,10 +15,11 @@ fn c_load(coords: vec2<i32>, dimensions: vec2<u32>) -> f32 {
 }
 
 fn apply_kernel(kernel: array<f32, 9>, neighbors: array<f32, 9>) -> f32 {
-   return kernel[0] * step(neighbors[4], neighbors[0]) + kernel[1] * step(neighbors[4], neighbors[1]) + kernel[2] * step(neighbors[4], neighbors[2])
-      + kernel[3] * step(neighbors[4], neighbors[3]) + kernel[4] * step(neighbors[4], neighbors[4]) + kernel[5] * step(neighbors[4], neighbors[5])
-      + kernel[6] * step(neighbors[4], neighbors[6]) + kernel[7] * step(neighbors[4], neighbors[7]) + kernel[8] * step(neighbors[4], neighbors[8]);
+   return kernel[0] * step(neighbors[0], neighbors[4]) + kernel[1] * step(neighbors[1], neighbors[4]) + kernel[2] * step(neighbors[2], neighbors[4])
+      + kernel[3] * step(neighbors[3], neighbors[4]) + kernel[4] * step(neighbors[4], neighbors[4]) + kernel[5] * step(neighbors[5], neighbors[4])
+      + kernel[6] * step(neighbors[6], neighbors[4]) + kernel[7] * step(neighbors[7], neighbors[4]) + kernel[8] * step(neighbors[8], neighbors[4]);
 }
+
 //TODO: set to 8x8
 @compute
 @workgroup_size(8, 8, 1)
@@ -26,16 +27,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
    let size: vec2<u32> = textureDimensions(input_image);
 
    let load: vec4<f32> = textureLoad(input_image, global_id.xy);
-   let i: vec2<i32> = vec2<i32>(i32(global_id.x), i32(global_id.y));
+   let id: vec2<i32> = vec2<i32>(i32(global_id.x), i32(global_id.y));
    var offsets = array<vec2<i32>, 9>(
       vec2(-1, -1), vec2(0, -1), vec2(1, -1),
       vec2(-1, 0), vec2(0, 0), vec2(1, 0),
       vec2(-1, 1), vec2(0, 1), vec2(1, 1)
    );
    var neighbors = array<f32, 9>(
-      c_load(i + offsets[0], size), c_load(i + offsets[1], size), c_load(i + offsets[2], size),
-      c_load(i + offsets[3], size), c_load(i + offsets[4], size), c_load(i + offsets[5], size),
-      c_load(i + offsets[6], size), c_load(i + offsets[7], size), c_load(i + offsets[8], size)
+      c_load(id + offsets[0], size), c_load(id + offsets[1], size), c_load(id + offsets[2], size),
+      c_load(id + offsets[3], size), c_load(id + offsets[4], size), c_load(id + offsets[5], size),
+      c_load(id + offsets[6], size), c_load(id + offsets[7], size), c_load(id + offsets[8], size)
    );
 
    if (abs(neighbors[4]) < 1e-9) {
@@ -95,32 +96,29 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
       let prod = sum1 * sum2 * sum3 * sum4 * sum5 * sum6 * sum7 * sum8;
 
-      var min_idx = 4;
 
-      if abs(prod) > 1e-9 {
-            var min_depth = 9999.0;
-            var i = 0;
-            loop {
-               if i == 9 { break; }
-               // If diff is positive, that means the pixel we're on should be occluded by a neighboring pixel that's closer
-               let diff = neighbors[4] - neighbors[i];
-               if diff > 1e-9 && diff < min_depth {
+      // 0 Should be good to use here as all our kernel results will be 1 or 0
+      if abs(prod) > 0.0 {
+         var min_idx = 4;
+         var min_depth = 99999.0;
+         var i = 0;
+         loop {
+            if i == 9 { break; }
+            // If diff is positive, that means the pixel we're on should be occluded by a neighboring pixel that's closer
+            let diff = neighbors[4] - neighbors[i];
+            if diff > 1e-9 && diff < min_depth {
                   min_idx = i;
                   min_depth = diff;
-               }
-               i++;
             }
+            i++;
          }
-
-
-
-      // Remove this, was for testing only
-      if min_idx == 100 {
-         textureStore(output_image, global_id.xy, vec4(1.0, 0.0, 0.0, 1.0));
+         textureStore(output_image, global_id.xy, textureLoad(input_image, id + offsets[min_idx]));
+         textureStore(output_depth, global_id.xy, vec4(neighbors[min_idx]));
       }
       else {
-         textureStore(output_image, global_id.xy, textureLoad(input_image, i + offsets[min_idx]));
+         textureStore(output_image, global_id.xy, load);
+         textureStore(output_depth, global_id.xy, vec4(neighbors[4]));
       }
-      textureStore(output_depth, global_id.xy, vec4(neighbors[min_idx]));
+
    }
 }

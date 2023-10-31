@@ -27,16 +27,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
    let size: vec2<u32> = textureDimensions(input_image);
 
    let load: vec4<f32> = textureLoad(input_image, global_id.xy);
-   let i: vec2<i32> = vec2<i32>(i32(global_id.x), i32(global_id.y));
+   let id: vec2<i32> = vec2<i32>(i32(global_id.x), i32(global_id.y));
    var offsets = array<vec2<i32>, 9>(
       vec2(-1, -1), vec2(0, -1), vec2(1, -1),
       vec2(-1, 0), vec2(0, 0), vec2(1, 0),
       vec2(-1, 1), vec2(0, 1), vec2(1, 1)
    );
    var neighbors = array<f32, 9>(
-      c_load(i + offsets[0], size), c_load(i + offsets[1], size), c_load(i + offsets[2], size),
-      c_load(i + offsets[3], size), c_load(i + offsets[4], size), c_load(i + offsets[5], size),
-      c_load(i + offsets[6], size), c_load(i + offsets[7], size), c_load(i + offsets[8], size)
+      c_load(id + offsets[0], size), c_load(id + offsets[1], size), c_load(id + offsets[2], size),
+      c_load(id + offsets[3], size), c_load(id + offsets[4], size), c_load(id + offsets[5], size),
+      c_load(id + offsets[6], size), c_load(id + offsets[7], size), c_load(id + offsets[8], size)
    );
 
    if (abs(neighbors[4]) > 1e-9) {
@@ -118,7 +118,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
          textureStore(output_image, global_id.xy, vec4(1.0, 0.0, 0.0, 1.0));
       }
       else {
-         textureStore(output_image, global_id.xy, textureLoad(input_image, i + offsets[min_idx]));
+         textureStore(output_image, global_id.xy, textureLoad(input_image, id + offsets[min_idx]));
       }
       textureStore(output_depth, global_id.xy, vec4(neighbors[min_idx]));
    }

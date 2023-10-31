@@ -257,8 +257,8 @@ impl Renderer {
             background_shader,
             occlusion_shader,
             head_state,
-            background_shading_iters: 10,
-            occlusion_shading_iters: 10,
+            background_shading_iters: 5,
+            occlusion_shading_iters: 5,
         }
     }
 

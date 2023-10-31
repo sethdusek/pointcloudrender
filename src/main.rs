@@ -173,7 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut changed = true;
         let mut img_count = 0;
         let mut background_shading_enabled = true;
-        let mut occlusion_shading_enabled = true;
+        let mut occlusion_shading_enabled = false;
 
         events_loop.run(move |e, _, ctrl| match e {
             Event::WindowEvent {
