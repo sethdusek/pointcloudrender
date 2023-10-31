@@ -16,5 +16,5 @@ image = "0.24.7"
 nalgebra = "0.32.3"
 pollster = "0.3.0"
 raw-window-handle = "0.5"
-wgpu = {git = "https://github.com/gfx-rs/wgpu.git"}
+wgpu = {git = "https://github.com/gfx-rs/wgpu.git", rev="2a9fdf9aa1ca1a9e7191dba7c75b512fb07ec337"}
 winit = "0.28.7"
