@@ -18,7 +18,7 @@ fn c_load(coords: vec2<i32>, dimensions: vec2<u32>) -> f32 {
 fn apply_kernel(kernel: array<f32, 9>, neighbors: array<f32, 9>) -> f32 {
    return kernel[0] * neighbors[0] + kernel[1] * neighbors[1] + kernel[2] * neighbors[2]
       + kernel[3] * neighbors[3] + kernel[4] * neighbors[4] + kernel[5] * neighbors[5]
-      + kernel[6] * neighbors[6] + kernel[7] * neighbors[7] + kernel[7] * neighbors[7];
+      + kernel[6] * neighbors[6] + kernel[7] * neighbors[7] + kernel[8] * neighbors[8];
 }
 //TODO: set to 8x8
 @compute
@@ -29,9 +29,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
    let load: vec4<f32> = textureLoad(input_image, global_id.xy);
    let i: vec2<i32> = vec2<i32>(i32(global_id.x), i32(global_id.y));
    var offsets = array<vec2<i32>, 9>(
-        vec2(-1, -1), vec2(0, -1), vec2(1, -1),
-        vec2(-1, 0), vec2(0, 0), vec2(1, 0),
-        vec2(-1, 1), vec2(0, 1), vec2(1, 1)
+      vec2(-1, -1), vec2(0, -1), vec2(1, -1),
+      vec2(-1, 0), vec2(0, 0), vec2(1, 0),
+      vec2(-1, 1), vec2(0, 1), vec2(1, 1)
    );
    var neighbors = array<f32, 9>(
       c_load(i + offsets[0], size), c_load(i + offsets[1], size), c_load(i + offsets[2], size),
@@ -39,7 +39,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
       c_load(i + offsets[6], size), c_load(i + offsets[7], size), c_load(i + offsets[8], size)
    );
 
-   if (abs(neighbors[4]) > 1e-8) {
+   if (abs(neighbors[4]) > 1e-9) {
       textureStore(output_image, global_id.xy, load);
       textureStore(output_depth, global_id.xy, vec4(neighbors[4]));
    }
@@ -98,23 +98,28 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
       var min_idx = 4;
 
-      if abs(prod) > 1e-7 {
-            // TODO: remove this monstrosity. turns out you *can* index arrays by index if you declare it with var instead of let
+      if abs(prod) > 1e-9 {
             var min_depth = 9999.0;
-            if neighbors[0] < min_depth { min_idx = 0; min_depth = neighbors[0]; }
-            if neighbors[1] < min_depth { min_idx = 1; min_depth = neighbors[1]; }
-            if neighbors[2] < min_depth { min_idx = 2; min_depth = neighbors[2]; }
-            if neighbors[3] < min_depth { min_idx = 3; min_depth = neighbors[3]; }
-            if neighbors[4] < min_depth { min_idx = 4; min_depth = neighbors[4]; }
-            if neighbors[5] < min_depth { min_idx = 5; min_depth = neighbors[5]; }
-            if neighbors[6] < min_depth { min_idx = 6; min_depth = neighbors[6]; }
-            if neighbors[7] < min_depth { min_idx = 7; min_depth = neighbors[7]; }
-            if neighbors[8] < min_depth { min_idx = 8; min_depth = neighbors[8]; }
+            var i = 0;
+            loop {
+               if i == 9 { break; }
+               if abs(neighbors[i]) > 1e-9 && abs(neighbors[i]) < min_depth {
+                  min_idx = i;
+                  min_depth = abs(neighbors[i]);
+               }
+               i++;
+            }
+         }
+
+
+
+      // Remove this, was for testing only
+      if min_idx == 100 {
+         textureStore(output_image, global_id.xy, vec4(1.0, 0.0, 0.0, 1.0));
       }
-
-
-
-      textureStore(output_image, global_id.xy, textureLoad(input_image, i + offsets[min_idx]));
+      else {
+         textureStore(output_image, global_id.xy, textureLoad(input_image, i + offsets[min_idx]));
+      }
       textureStore(output_depth, global_id.xy, vec4(neighbors[min_idx]));
    }
 }

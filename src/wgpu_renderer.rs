@@ -116,6 +116,7 @@ pub struct Renderer {
     background_shader: Option<BackgroundShader>,
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
+    pub background_shading_iters: u32
 }
 
 impl Renderer {
@@ -238,6 +239,7 @@ impl Renderer {
             render_pipeline,
             background_shader,
             head_state,
+            background_shading_iters: 40
         }
     }
 
@@ -393,7 +395,7 @@ impl Renderer {
             bytemuck::cast_slice(&[view_uniform]),
         );
     }
-    pub fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn render(&mut self, background_filling_toggle: bool) -> Result<(), Box<dyn std::error::Error>> {
         let output = self
             .head_state
             .as_ref()
@@ -458,26 +460,34 @@ impl Renderer {
         }
 
         if let Some(background_shader) = &self.background_shader {
-            background_shader.run(&self.device, &mut command_encoder, &self.target_texture, &self.target_depth, 40);
-            command_encoder.copy_texture_to_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &background_shader.textures[1].0.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::ImageCopyTexture {
-                    texture: &self.target_texture.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: self.target_texture.texture.width(),
-                    height: self.target_texture.texture.height(),
-                    depth_or_array_layers: 1,
-                },
-            );
+            if background_filling_toggle {
+                background_shader.run(
+                    &self.device,
+                    &mut command_encoder,
+                    &self.target_texture,
+                    &self.target_depth,
+                    self.background_shading_iters,
+                );
+                command_encoder.copy_texture_to_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &background_shader.textures[1].0.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::ImageCopyTexture {
+                        texture: &self.target_texture.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: self.target_texture.texture.width(),
+                        height: self.target_texture.texture.height(),
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
         }
 
         if let Some(output) = &output {

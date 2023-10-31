@@ -31,7 +31,6 @@ impl HeadlessRenderer {
             self.stdin.read_line(&mut self.buf)?;
             self.parse_line().unwrap();
         }
-        Ok(())
     }
 
     pub fn parse_line(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -57,7 +56,7 @@ impl HeadlessRenderer {
 
             Some(("screenshot", filename)) => {
                 self.renderer.update_camera();
-                self.renderer.render()?;
+                self.renderer.render(true)?;
                 self.renderer.save_screenshot(filename)?;
             }
             _ => (),

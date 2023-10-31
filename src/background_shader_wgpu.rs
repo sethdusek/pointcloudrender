@@ -204,7 +204,7 @@ impl BackgroundShader {
         command_encoder: &mut wgpu::CommandEncoder,
         initial_texture: &Texture,
         initial_depth: &Texture,
-        iters: usize,
+        iters: u32,
     ) {
         let dims = (
             initial_texture.texture.width(),
@@ -256,7 +256,7 @@ impl BackgroundShader {
                 });
             compute_pass.set_pipeline(&self.compute_pipeline);
             for iter in 0..iters {
-                compute_pass.set_bind_group(0, &self.bindgroups[iter % 2], &[]);
+                compute_pass.set_bind_group(0, &self.bindgroups[(iter % 2) as usize], &[]);
                 compute_pass.dispatch_workgroups((dims.0 + 7) / 8, (dims.1 + 7) / 8, 1);
             }
         }

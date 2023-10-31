@@ -242,20 +242,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 img_count += 1;
             }
-            // Event::WindowEvent {
-            //     event: WindowEvent::ReceivedCharacter('t'),
-            //     ..
-            // } => {
-            //     // enable background filling
-            //     toggle = !toggle;
-            // }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('t'),
+                ..
+            } => {
+                // enable background filling
+                toggle = !toggle;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('['),
+                ..
+            } => {
+                // enable background filling
+                renderer.background_shading_iters = std::cmp::max(1, renderer.background_shading_iters.saturating_sub(1));
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter(']'),
+                ..
+            } => {
+                // enable background filling
+                renderer.background_shading_iters = renderer.background_shading_iters.saturating_add(1);
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => ctrl.set_exit_with_code(0),
 
             Event::RedrawRequested(..) => {
-                renderer.render().unwrap();
+                renderer.render(toggle).unwrap();
             }
 
             Event::MainEventsCleared => {
@@ -265,15 +279,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap()
                     .window
                     .request_redraw();
-                // renderer.render(toggle).unwrap();
-                // if changed {
-                //     renderer
-                //         .save_screenshot(&format!("screenshot-{}.png", img_count))
-                //         .unwrap();
-                //     renderer.save_depth(&format!("screenshot-depth-{}.png", img_count));
-                //     img_count += 1;
-                //     changed = false;
-                // }
             }
             _ => {}
         });
