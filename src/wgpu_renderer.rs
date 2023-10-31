@@ -115,9 +115,11 @@ pub struct Renderer {
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
     background_shader: Option<FillingShader>,
+    occlusion_shader: Option<FillingShader>,
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
-    pub background_shading_iters: u32
+    pub background_shading_iters: u32,
+    pub occlusion_shading_iters: u32
 }
 
 impl Renderer {
@@ -126,6 +128,7 @@ impl Renderer {
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
         background_filling: bool,
+        occlusion_filling: bool
     ) -> Self {
         let size = image.dimensions();
 
@@ -226,6 +229,11 @@ impl Renderer {
         } else {
             None
         };
+        let occlusion_shader = if occlusion_filling {
+            Some(FillingShader::new(&device, size, wgpu::include_wgsl!("shaders/occlusion_shader.wgsl")))
+        } else {
+            None
+        };
 
         Renderer {
             device,
@@ -239,8 +247,10 @@ impl Renderer {
             view_params,
             render_pipeline,
             background_shader,
+            occlusion_shader,
             head_state,
-            background_shading_iters: 40
+            background_shading_iters: 10,
+            occlusion_shading_iters: 10
         }
     }
 
