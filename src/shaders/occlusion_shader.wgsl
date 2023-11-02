@@ -11,7 +11,8 @@ var output_depth: texture_storage_2d<r32float, write>;
 // Return a clamped read into the texture so we don't go out of bounds
 fn c_load(coords: vec2<i32>, dimensions: vec2<u32>) -> f32 {
    let clamped: vec2<i32> = vec2<i32>(clamp(coords.x, 0, i32(dimensions.x)), clamp(coords.y, 0, i32(dimensions.y)));
-   return textureLoad(input_depth, clamped).r;
+   // Missing pixels have an alpha of 1. To avoid them being considered for occlusion shading we return an absurdly high depth value
+   return textureLoad(input_depth, clamped).r + 10000.0 * textureLoad(input_image, clamped).a;
 }
 
 fn apply_kernel(kernel: array<f32, 9>, neighbors: array<f32, 9>) -> f32 {
@@ -39,7 +40,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
       c_load(id + offsets[6], size), c_load(id + offsets[7], size), c_load(id + offsets[8], size)
    );
 
-   if (abs(neighbors[4]) < 1e-9) {
+   if (abs(neighbors[4]) < 1e-9 || load.a == 1.0) {
       textureStore(output_image, global_id.xy, load);
       textureStore(output_depth, global_id.xy, vec4(neighbors[4]));
    }
@@ -100,13 +101,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
       // 0 Should be good to use here as all our kernel results will be 1 or 0
       if abs(prod) > 0.0 {
          var min_idx = 4;
-         var min_depth = 99999.0;
+         var min_depth = 0.0;
          var i = 0;
          loop {
             if i == 9 { break; }
             // If diff is positive, that means the pixel we're on should be occluded by a neighboring pixel that's closer
             let diff = neighbors[4] - neighbors[i];
-            if diff > 1e-9 && diff < min_depth {
+            if diff > 1e-2 && diff > min_depth {
                   min_idx = i;
                   min_depth = diff;
             }

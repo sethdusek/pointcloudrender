@@ -113,13 +113,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
 
-      // Remove this, was for testing only
-      if min_idx == 100 {
-         textureStore(output_image, global_id.xy, vec4(1.0, 0.0, 0.0, 1.0));
-      }
-      else {
-         textureStore(output_image, global_id.xy, textureLoad(input_image, id + offsets[min_idx]));
-      }
+      textureStore(output_image, global_id.xy, textureLoad(input_image, id + offsets[min_idx]));
       textureStore(output_depth, global_id.xy, vec4(neighbors[min_idx]));
    }
 }
