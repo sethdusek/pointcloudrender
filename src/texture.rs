@@ -28,7 +28,7 @@ impl Texture {
             usage: texture_usage,
             view_formats: &[], // TODO?
         });
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor { format: Some(texture.format()), ..Default::default() });
         Texture {
             texture,
             texture_view,
