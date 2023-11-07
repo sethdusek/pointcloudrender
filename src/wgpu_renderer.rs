@@ -115,7 +115,6 @@ pub struct Renderer {
     depth_texture: Texture,
     render_pipeline: wgpu::RenderPipeline,
     background_shader: Option<FillingShader>,
-    occlusion_shader: Option<FillingShader>,
     pub view_params: ViewParams,
     pub head_state: Option<HeadState>,
     pub background_shading_iters: u32,
@@ -233,15 +232,6 @@ impl Renderer {
         } else {
             None
         };
-        let occlusion_shader = if occlusion_filling {
-            Some(FillingShader::new(
-                &device,
-                size,
-                wgpu::include_wgsl!("shaders/occlusion_shader.wgsl"),
-            ))
-        } else {
-            None
-        };
 
         Renderer {
             device,
@@ -255,7 +245,6 @@ impl Renderer {
             view_params,
             render_pipeline,
             background_shader,
-            occlusion_shader,
             head_state,
             background_shading_iters: 5,
             occlusion_shading_iters: 1,
@@ -475,19 +464,6 @@ impl Renderer {
             }
         }
 
-        if let Some(occlusion_shader) = &self.occlusion_shader {
-            if occlusion_filling_toggle {
-                occlusion_shader.run(
-                    &mut command_encoder,
-                    &output_texture,
-                    &output_depth,
-                    self.occlusion_shading_iters,
-                );
-                output_texture = &occlusion_shader.textures[1].0;
-                output_depth = &occlusion_shader.textures[1].1;
-            }
-        }
-
         let dst = if let Some(output) = &output {
             &output.texture
         } else {
@@ -515,7 +491,6 @@ impl Renderer {
         );
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
-        // TODO: clean up this mess
         if let Some(output) = output {
             output.present();
         }
