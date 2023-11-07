@@ -2,9 +2,9 @@
 var input_image: texture_storage_2d<bgra8unorm, read>;
 @group(0) @binding(1)
 var output_image: texture_storage_2d<bgra8unorm, write>;
-@group(0) @binding(3)
+@group(0) @binding(2)
 var input_depth: texture_storage_2d<r32float, read>;
-@group(0) @binding(4)
+@group(0) @binding(3)
 var output_depth: texture_storage_2d<r32float, write>;
 
 

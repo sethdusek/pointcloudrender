@@ -99,7 +99,7 @@ impl FillingShader {
                     count: None,
                 },
                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
+                    binding: 2,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadOnly,
@@ -109,7 +109,7 @@ impl FillingShader {
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 4,
+                    binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
@@ -136,11 +136,11 @@ impl FillingShader {
                             resource: wgpu::BindingResource::TextureView(&color1.texture_view),
                         },
                        wgpu::BindGroupEntry {
-                            binding: 3,
+                            binding: 2,
                             resource: wgpu::BindingResource::TextureView(&depth0.texture_view),
                         },
                         wgpu::BindGroupEntry {
-                            binding: 4,
+                            binding: 3,
                             resource: wgpu::BindingResource::TextureView(&depth1.texture_view),
                         },
                     ],
