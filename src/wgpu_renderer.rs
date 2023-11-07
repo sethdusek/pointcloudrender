@@ -39,7 +39,7 @@ struct ViewUniform {
 }
 impl From<ViewParams> for ViewUniform {
     fn from(view_params: ViewParams) -> ViewUniform {
-        let matrix = OPENGL_TO_WGPU_MATRIX * view_params.projection * view_params.camera;
+        let matrix = OPENGL_TO_WGPU_MATRIX;
         ViewUniform {
             view: matrix.as_slice().try_into().unwrap(),
         }
@@ -267,32 +267,10 @@ impl Renderer {
         image: ImageBuffer<Rgba<u8>, Vec<u8>>,
         depth: ImageBuffer<Luma<u8>, Vec<u8>>,
     ) -> wgpu::Buffer {
-        let dims = image.dimensions();
-        assert_eq!(image.dimensions(), depth.dimensions());
-        let mut vertices = Vec::with_capacity((dims.0 * dims.1) as usize);
-        let min_depth = depth.rows().flatten().map(|luma| luma.0[0]).min().unwrap();
-        let max_depth =
-            (depth.rows().flatten().map(|luma| luma.0[0]).max().unwrap() - min_depth) as f32;
-        // Generate vertices for each pixel. OpenGL coordinates have a minimum of -1 and maximum of 1
-        for (y, (r1, r2)) in image.rows().zip(depth.rows()).enumerate() {
-            for (x, (c1, c2)) in r1.zip(r2).enumerate() {
-                vertices.push(Vertex {
-                    position: [
-                        (x as f32 / dims.0 as f32) * 2.0 - 1.0,
-                        // Top of the screen is +1 in OpenGL
-                        (y as f32 / dims.1 as f32) * -2.0 + 1.0,
-                        ((c2.0[0] - min_depth) as f32 / (max_depth - min_depth as f32)) * -2.0
-                            + 0.9,
-                    ],
-                    color: [
-                        c1.0[0] as f32 / 255.0,
-                        c1.0[1] as f32 / 255.0,
-                        c1.0[2] as f32 / 255.0,
-                        0.0,
-                    ],
-                });
-            }
-        }
+        let vertices = [Vertex { position: [0.0, 1.0, 0.0], color: [1.0, 0.0, 0.0, 0.0] },
+                        Vertex { position: [1.0, -1.0, 0.0], color: [0.0, 1.0, 0.0, 0.0] },
+                        Vertex { position: [-1.0, -1.0, 0.0], color: [0.0, 0.0, 1.0, 0.0] }];
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertices"),
             contents: bytemuck::cast_slice(&vertices),
@@ -381,10 +359,10 @@ impl Renderer {
             }),
             layout: Some(&render_pipeline_layout),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,  // doesn't matter
-                cull_mode: Some(wgpu::Face::Back), // doesn't matter also
+                cull_mode: None, // doesn't matter also
                 polygon_mode: wgpu::PolygonMode::Fill, // doesn't matter..?
                 unclipped_depth: false,
                 conservative: false,
