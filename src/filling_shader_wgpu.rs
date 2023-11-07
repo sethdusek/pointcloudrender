@@ -3,7 +3,6 @@ use wgpu::util::DeviceExt;
 use crate::texture::Texture;
 pub struct FillingShader {
     pub textures: [(Texture, Texture); 2],
-    convergence_tracker: wgpu::Buffer,
     // TODO: 2 bindgroups
     bindgroups: [wgpu::BindGroup; 2],
     compute_pipeline: wgpu::ComputePipeline,
@@ -59,24 +58,13 @@ impl FillingShader {
             ),
         ];
 
-        let convergence_tracker = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: &[0u8],
-            usage: wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::MAP_READ
-                | wgpu::BufferUsages::MAP_WRITE
-                | wgpu::BufferUsages::UNIFORM,
-        });
-        let (bindgroups, compute_pipeline) = FillingShader::create_compute_pipeline(
+       let (bindgroups, compute_pipeline) = FillingShader::create_compute_pipeline(
             &device,
             &textures,
-            &convergence_tracker,
             shader,
         );
         FillingShader {
             textures,
-            convergence_tracker,
             bindgroups,
             compute_pipeline,
         }
@@ -85,7 +73,6 @@ impl FillingShader {
     pub fn create_compute_pipeline(
         device: &wgpu::Device,
         textures: &[(Texture, Texture); 2],
-        convergence_tracker: &wgpu::Buffer,
         shader: wgpu::ShaderModuleDescriptor,
     ) -> ([wgpu::BindGroup; 2], wgpu::ComputePipeline) {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -111,17 +98,7 @@ impl FillingShader {
                     },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: Some(1.try_into().unwrap()),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
+               wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
@@ -158,13 +135,7 @@ impl FillingShader {
                             binding: 1,
                             resource: wgpu::BindingResource::TextureView(&color1.texture_view),
                         },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Buffer(
-                                convergence_tracker.as_entire_buffer_binding(),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
+                       wgpu::BindGroupEntry {
                             binding: 3,
                             resource: wgpu::BindingResource::TextureView(&depth0.texture_view),
                         },

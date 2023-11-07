@@ -384,7 +384,6 @@ impl Renderer {
     pub fn render(
         &mut self,
         background_filling_toggle: bool,
-        occlusion_filling_toggle: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let output = self
             .head_state

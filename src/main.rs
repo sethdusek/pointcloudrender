@@ -170,132 +170,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut headless_renderer = HeadlessRenderer::new(renderer);
         headless_renderer.run()?;
     } else {
-        let mut changed = true;
-        let mut img_count = 0;
         let mut background_shading_enabled = true;
-        let mut occlusion_shading_enabled = false;
 
         events_loop.run(move |e, _, ctrl| match e {
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('a'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_pitch(renderer.view_params.pitch() + 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('d'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_pitch(renderer.view_params.pitch() - 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('q'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_yaw(renderer.view_params.yaw() + 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('e'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_yaw(renderer.view_params.yaw() - 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('w'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_roll(renderer.view_params.roll() + 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('s'),
-                ..
-            } => {
-                renderer
-                    .view_params
-                    .set_roll(renderer.view_params.roll() - 0.01);
-                renderer.update_camera();
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('f'),
-                ..
-            } => {
-                let now = std::time::Instant::now();
-                renderer
-                    .save_screenshot(&format!("screenshot-{img_count}.png"))
-                    .unwrap();
-                println!(
-                    "Screenshot saved to screenshot-{img_count}.png in {:?}",
-                    std::time::Instant::now() - now
-                );
-                img_count += 1;
-            }
-            Event::WindowEvent {
+           Event::WindowEvent {
                 event: WindowEvent::ReceivedCharacter('t'),
                 ..
             } => {
                 background_shading_enabled = !background_shading_enabled;
             }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('y'),
-                ..
-            } => {
-                // enable background filling
-                occlusion_shading_enabled = !occlusion_shading_enabled;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('['),
-                ..
-            } => {
-                // enable background filling
-                renderer.background_shading_iters =
-                    std::cmp::max(1, renderer.background_shading_iters.saturating_sub(1));
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter(']'),
-                ..
-            } => {
-                // enable background filling
-                renderer.background_shading_iters =
-                    renderer.background_shading_iters.saturating_add(1);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter(';'),
-                ..
-            } => {
-                // enable background filling
-                renderer.occlusion_shading_iters =
-                    std::cmp::max(1, renderer.occlusion_shading_iters.saturating_sub(1));
-            }
-            Event::WindowEvent {
-                event: WindowEvent::ReceivedCharacter('\''),
-                ..
-            } => {
-                // enable background filling
-                renderer.occlusion_shading_iters =
-                    renderer.occlusion_shading_iters.saturating_add(1);
-            }
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => ctrl.set_exit_with_code(0),
-
-            Event::RedrawRequested(..) => {
-                renderer.render(background_shading_enabled, occlusion_shading_enabled).unwrap();
+           Event::RedrawRequested(..) => {
+                renderer.render(background_shading_enabled).unwrap();
             }
 
             Event::MainEventsCleared => {
