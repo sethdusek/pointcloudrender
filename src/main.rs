@@ -295,7 +295,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } => ctrl.set_exit_with_code(0),
 
             Event::RedrawRequested(..) => {
-                renderer.render(background_shading_enabled, occlusion_shading_enabled).unwrap();
+                renderer
+                    .render(background_shading_enabled, occlusion_shading_enabled)
+                    .unwrap();
             }
 
             Event::MainEventsCleared => {

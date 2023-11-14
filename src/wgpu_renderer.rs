@@ -191,7 +191,7 @@ impl Renderer {
             texture_format,
             DEPTH_STORAGE_FORMAT,
         );
-        println!(
+        eprintln!(
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
         );
@@ -602,8 +602,10 @@ impl Renderer {
 
         Ok(output_buffer)
     }
-    pub fn save_screenshot(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let mut buf = self.read_texture(&self.target_texture.texture).unwrap();
+    pub fn read_front_buffer(
+        &self,
+    ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
+        let mut buf = self.read_texture(&self.target_texture.texture)?;
         // Convert bgra to rgba
         if let wgpu::TextureFormat::Bgra8Unorm = self.target_texture.texture.format() {
             for chunk in buf.chunks_mut(4) {
@@ -616,6 +618,10 @@ impl Renderer {
             buf,
         )
         .unwrap();
+        Ok(image)
+    }
+    pub fn save_screenshot(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let image = self.read_front_buffer()?;
         image.save(path)?;
         Ok(())
     }

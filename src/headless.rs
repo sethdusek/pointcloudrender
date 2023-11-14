@@ -1,4 +1,5 @@
 use crate::wgpu_renderer::Renderer;
+use base64::Engine as _;
 use std::io::prelude::*;
 
 pub struct HeadlessRenderer {
@@ -54,12 +55,27 @@ impl HeadlessRenderer {
                     .set_roll(self.renderer.view_params.roll() + num);
             }
 
-            Some(("screenshot", filename)) => {
+            Some(("save_screenshot", filename)) => {
                 self.renderer.update_camera();
                 self.renderer.render(true, true)?;
                 self.renderer.save_screenshot(filename)?;
             }
-            _ => (),
+            None => match self.buf.trim_end() {
+                "screenshot" => {
+                    self.renderer.update_camera();
+                    self.renderer.render(true, true)?;
+
+                    let screenshot = self.renderer.read_front_buffer()?;
+                    let mut output_buffer = Vec::new();
+                    let encoder = image::codecs::png::PngEncoder::new(&mut output_buffer);
+                    screenshot.write_with_encoder(encoder)?;
+                    let base64_data =
+                        base64::engine::general_purpose::STANDARD.encode(&output_buffer);
+                    println!("{base64_data}");
+                }
+                _ => println!("Invalid Command!"),
+            },
+            _ => println!("Invalid Command!"),
         }
         Ok(())
     }
