@@ -1,4 +1,4 @@
-use crate::wgpu_renderer::Renderer;
+use crate::renderer::Renderer;
 use base64::Engine as _;
 use std::io::prelude::*;
 

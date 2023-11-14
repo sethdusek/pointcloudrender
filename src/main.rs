@@ -2,79 +2,17 @@ use headless::HeadlessRenderer;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use clap::Parser;
-use glium::{glutin::surface::WindowSurface, Display};
 use nalgebra::Vector3;
-use renderer::Renderer;
 use winit::{
     event::{Event, WindowEvent},
     window::Window,
 };
 
-mod background_shader;
-mod filling_shader_wgpu;
+mod filling_shader;
 mod headless;
-mod renderer;
 mod texture;
 mod view_params;
-mod wgpu_renderer;
-
-fn open_display(
-    event_loop: &winit::event_loop::EventLoop<()>,
-    width: u32,
-    height: u32,
-) -> (Window, Display<WindowSurface>) {
-    // Boilerplate code ripped from glium git
-    use glutin::display::GetGlDisplay;
-    use glutin::prelude::*;
-    use raw_window_handle::HasRawWindowHandle;
-
-    // First we start by opening a new Window
-    let builder = winit::window::WindowBuilder::new()
-        .with_inner_size(winit::dpi::PhysicalSize::new(width, height));
-    let display_builder = glutin_winit::DisplayBuilder::new().with_window_builder(Some(builder));
-    let config_template_builder = glutin::config::ConfigTemplateBuilder::new();
-
-    let (window, gl_config) = display_builder
-        .build(&event_loop, config_template_builder, |mut configs| {
-            // Just use the first configuration since we don't have any special preferences here
-            configs.next().unwrap()
-        })
-        .unwrap();
-    let window = window.unwrap();
-
-    // Now we get the window size to use as the initial size of the Surface
-    let (width, height): (u32, u32) = window.inner_size().into();
-    let attrs = glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
-        .build(
-            window.raw_window_handle(),
-            std::num::NonZeroU32::new(width).unwrap(),
-            std::num::NonZeroU32::new(height).unwrap(),
-        );
-
-    // Finally we can create a Surface, use it to make a PossiblyCurrentContext and create the glium Display
-    let surface = unsafe {
-        gl_config
-            .display()
-            .create_window_surface(&gl_config, &attrs)
-            .unwrap()
-    };
-    let context_attributes = glutin::context::ContextAttributesBuilder::new()
-        .with_context_api(glutin::context::ContextApi::OpenGl(Some(
-            glutin::context::Version { major: 4, minor: 6 },
-        )))
-        .build(Some(window.raw_window_handle()));
-    let current_context = Some(unsafe {
-        gl_config
-            .display()
-            .create_context(&gl_config, &context_attributes)
-            .expect("failed to create context")
-    })
-    .unwrap()
-    .make_current(&surface)
-    .unwrap();
-    let display = Display::from_context_surface(current_context, surface).unwrap();
-    (window, display)
-}
+mod renderer;
 
 #[derive(Parser)]
 struct Args {
@@ -158,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let mut renderer = pollster::block_on(wgpu_renderer::Renderer::new(
+    let mut renderer = pollster::block_on(renderer::Renderer::new(
         window,
         image.clone(),
         depth.clone(),

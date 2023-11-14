@@ -4,7 +4,6 @@ use crate::texture::Texture;
 pub struct FillingShader {
     pub textures: [(Texture, Texture); 2],
     convergence_tracker: wgpu::Buffer,
-    // TODO: 2 bindgroups
     bindgroups: [wgpu::BindGroup; 2],
     compute_pipeline: wgpu::ComputePipeline,
 }
@@ -30,7 +29,7 @@ impl FillingShader {
                 Texture::new(
                     device,
                     dims,
-                    crate::wgpu_renderer::DEPTH_STORAGE_FORMAT,
+                    crate::renderer::DEPTH_STORAGE_FORMAT,
                     wgpu::TextureUsages::COPY_SRC
                         | wgpu::TextureUsages::COPY_DST
                         | wgpu::TextureUsages::STORAGE_BINDING,
@@ -50,7 +49,7 @@ impl FillingShader {
                 Texture::new(
                     device,
                     dims,
-                    crate::wgpu_renderer::DEPTH_STORAGE_FORMAT,
+                    crate::renderer::DEPTH_STORAGE_FORMAT,
                     wgpu::TextureUsages::COPY_SRC
                         | wgpu::TextureUsages::COPY_DST
                         | wgpu::TextureUsages::STORAGE_BINDING,
@@ -126,7 +125,7 @@ impl FillingShader {
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::ReadOnly,
-                        format: crate::wgpu_renderer::DEPTH_STORAGE_FORMAT,
+                        format: crate::renderer::DEPTH_STORAGE_FORMAT,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
@@ -136,7 +135,7 @@ impl FillingShader {
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: crate::wgpu_renderer::DEPTH_STORAGE_FORMAT,
+                        format: crate::renderer::DEPTH_STORAGE_FORMAT,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,

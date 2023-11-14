@@ -10,9 +10,6 @@ base64 = "0.21.5"
 bytemuck = { version = "1.14.0", features = ["derive"] }
 clap = { version = "4.4.6", features = ["derive"] }
 float-ord = "0.3.2"
-glium = { git = "https://github.com/glium/glium.git" }
-glutin = "0.30.4"
-glutin-winit = "0.3.0"
 image = "0.24.7"
 nalgebra = "0.32.3"
 pollster = "0.3.0"
