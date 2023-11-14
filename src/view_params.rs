@@ -1,5 +1,6 @@
-use nalgebra::{Point3, Matrix4, Vector3};
+use nalgebra::{Matrix4, Point3, Vector3};
 
+#[derive(Copy, Clone)]
 pub struct ViewParams {
     eye: Point3<f32>,
     look_at: Point3<f32>,

@@ -1,83 +1,23 @@
-
-
-
+use headless::HeadlessRenderer;
 use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use clap::Parser;
-use glium::{
-    glutin::surface::WindowSurface, Display,
-};
 use nalgebra::Vector3;
-use renderer::Renderer;
 use winit::{
     event::{Event, WindowEvent},
     window::Window,
 };
 
-mod background_shader;
-mod renderer;
+mod filling_shader;
+mod headless;
+mod texture;
 mod view_params;
-
-fn open_display(
-    event_loop: &winit::event_loop::EventLoop<()>,
-    width: u32,
-    height: u32,
-) -> (Window, Display<WindowSurface>) {
-    // Boilerplate code ripped from glium git
-    use glutin::display::GetGlDisplay;
-    use glutin::prelude::*;
-    use raw_window_handle::HasRawWindowHandle;
-
-    // First we start by opening a new Window
-    let builder = winit::window::WindowBuilder::new()
-        .with_inner_size(winit::dpi::PhysicalSize::new(width, height));
-    let display_builder = glutin_winit::DisplayBuilder::new().with_window_builder(Some(builder));
-    let config_template_builder = glutin::config::ConfigTemplateBuilder::new();
-
-    let (window, gl_config) = display_builder
-        .build(&event_loop, config_template_builder, |mut configs| {
-            // Just use the first configuration since we don't have any special preferences here
-            configs.next().unwrap()
-        })
-        .unwrap();
-    let window = window.unwrap();
-
-    // Now we get the window size to use as the initial size of the Surface
-    let (width, height): (u32, u32) = window.inner_size().into();
-    let attrs = glutin::surface::SurfaceAttributesBuilder::<glutin::surface::WindowSurface>::new()
-        .build(
-            window.raw_window_handle(),
-            std::num::NonZeroU32::new(width).unwrap(),
-            std::num::NonZeroU32::new(height).unwrap(),
-        );
-
-    // Finally we can create a Surface, use it to make a PossiblyCurrentContext and create the glium Display
-    let surface = unsafe {
-        gl_config
-            .display()
-            .create_window_surface(&gl_config, &attrs)
-            .unwrap()
-    };
-    let context_attributes = glutin::context::ContextAttributesBuilder::new()
-        .with_context_api(glutin::context::ContextApi::OpenGl(Some(
-            glutin::context::Version { major: 4, minor: 6 },
-        )))
-        .build(Some(window.raw_window_handle()));
-    let current_context = Some(unsafe {
-        gl_config
-            .display()
-            .create_context(&gl_config, &context_attributes)
-            .expect("failed to create context")
-    })
-    .unwrap()
-    .make_current(&surface)
-    .unwrap();
-    let display = Display::from_context_surface(current_context, surface).unwrap();
-    (window, display)
-}
+mod renderer;
 
 #[derive(Parser)]
 struct Args {
+    #[arg(long)]
+    headless: bool,
     image_path: String,
     depth_path: String,
     before_path: Option<String>,
@@ -146,93 +86,168 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-    let (_window, display) = open_display(&events_loop, dims.0, dims.1);
+    let window = if !args.headless {
+        let window = winit::window::WindowBuilder::new()
+            .with_inner_size(winit::dpi::PhysicalSize::new(dims.0, dims.1))
+            .build(&events_loop)?;
+        //let (window, display) = open_display(&events_loop, dims.0, dims.1);
+        Some(window)
+    } else {
+        None
+    };
 
-    let mut renderer = Renderer::new(display, image, depth, true, args.mask_path.is_none())?;
+    let mut renderer = pollster::block_on(renderer::Renderer::new(
+        window,
+        image.clone(),
+        depth.clone(),
+        true,
+        true,
+    ));
 
-    let mut changed = true;
-    let mut img_count = 0;
-    let mut toggle = true;
-    events_loop.run(move |e, _, ctrl| match e {
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('a'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_pitch(renderer.view_params.pitch() + 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('d'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_pitch(renderer.view_params.pitch() - 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('q'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_yaw(renderer.view_params.yaw() + 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('e'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_yaw(renderer.view_params.yaw() - 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('w'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_roll(renderer.view_params.roll() + 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('s'),
-            ..
-        } => {
-            renderer
-                .view_params
-                .set_roll(renderer.view_params.roll() - 0.01);
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('f'),
-            ..
-        } => {
-            // set changed to true. this tells the renderer it should take a screenshot on the next frame
-            changed = true;
-        }
-        Event::WindowEvent {
-            event: WindowEvent::ReceivedCharacter('t'),
-            ..
-        } => {
-            // enable background filling
-            toggle = !toggle;
-        }
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => ctrl.set_exit_with_code(0),
+    if args.headless {
+        let mut headless_renderer = HeadlessRenderer::new(renderer);
+        headless_renderer.run()?;
+    } else {
+        let mut changed = true;
+        let mut img_count = 0;
+        let mut background_shading_enabled = true;
+        let mut occlusion_shading_enabled = false;
 
-        Event::MainEventsCleared => {
-            renderer.render(toggle).unwrap();
-            if changed {
+        events_loop.run(move |e, _, ctrl| match e {
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('a'),
+                ..
+            } => {
                 renderer
-                    .save_screenshot(&format!("screenshot-{}.png", img_count))
-                    .unwrap();
-                renderer
-                    .save_depth(&format!("screenshot-depth-{}.png", img_count));
-                img_count += 1;
-                changed = false;
+                    .view_params
+                    .set_pitch(renderer.view_params.pitch() + 0.01);
+                renderer.update_camera();
             }
-        }
-        _ => {}
-    });
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('d'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_pitch(renderer.view_params.pitch() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('q'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_yaw(renderer.view_params.yaw() + 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('e'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_yaw(renderer.view_params.yaw() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('w'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_roll(renderer.view_params.roll() + 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('s'),
+                ..
+            } => {
+                renderer
+                    .view_params
+                    .set_roll(renderer.view_params.roll() - 0.01);
+                renderer.update_camera();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('f'),
+                ..
+            } => {
+                let now = std::time::Instant::now();
+                renderer
+                    .save_screenshot(&format!("screenshot-{img_count}.png"))
+                    .unwrap();
+                println!(
+                    "Screenshot saved to screenshot-{img_count}.png in {:?}",
+                    std::time::Instant::now() - now
+                );
+                img_count += 1;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('t'),
+                ..
+            } => {
+                background_shading_enabled = !background_shading_enabled;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('y'),
+                ..
+            } => {
+                // enable background filling
+                occlusion_shading_enabled = !occlusion_shading_enabled;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('['),
+                ..
+            } => {
+                // enable background filling
+                renderer.background_shading_iters =
+                    std::cmp::max(1, renderer.background_shading_iters.saturating_sub(1));
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter(']'),
+                ..
+            } => {
+                // enable background filling
+                renderer.background_shading_iters =
+                    renderer.background_shading_iters.saturating_add(1);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter(';'),
+                ..
+            } => {
+                // enable background filling
+                renderer.occlusion_shading_iters =
+                    std::cmp::max(1, renderer.occlusion_shading_iters.saturating_sub(1));
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ReceivedCharacter('\''),
+                ..
+            } => {
+                // enable background filling
+                renderer.occlusion_shading_iters =
+                    renderer.occlusion_shading_iters.saturating_add(1);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => ctrl.set_exit_with_code(0),
+
+            Event::RedrawRequested(..) => {
+                renderer
+                    .render(background_shading_enabled, occlusion_shading_enabled)
+                    .unwrap();
+            }
+
+            Event::MainEventsCleared => {
+                renderer
+                    .head_state
+                    .as_ref()
+                    .unwrap()
+                    .window
+                    .request_redraw();
+            }
+            _ => {}
+        });
+    }
+    Ok(())
 }
