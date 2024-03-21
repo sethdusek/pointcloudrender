@@ -10,9 +10,9 @@ use winit::{
 
 mod filling_shader;
 mod headless;
+mod renderer;
 mod texture;
 mod view_params;
-mod renderer;
 
 #[derive(Parser)]
 struct Args {

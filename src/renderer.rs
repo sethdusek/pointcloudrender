@@ -212,8 +212,9 @@ impl Renderer {
             DEPTH_STORAGE_FORMAT,
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            "Depth Render Buffer",
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
+            "Depth Render/Compute Buffer",
         );
 
         let depth_texture = Texture::new(
@@ -516,6 +517,7 @@ impl Renderer {
             &self.target_texture.texture
         };
 
+        // Copy final render result either to frontbuffer or in self.target_texture (for headless)
         command_encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
                 texture: &output_texture.texture,
@@ -535,9 +537,27 @@ impl Renderer {
                 depth_or_array_layers: 1,
             },
         );
+        command_encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: &output_depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: &self.target_depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: dst.width(),
+                height: dst.height(),
+                depth_or_array_layers: 1,
+            },
+        );
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
-        // TODO: clean up this mess
         if let Some(output) = output {
             output.present();
         }
@@ -546,12 +566,14 @@ impl Renderer {
 
     fn read_texture(&self, texture: &wgpu::Texture) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let bpp = texture.format().block_size(None).unwrap();
+        dbg!(bpp);
         // let bpp = match texture.format() {
         //     wgpu::TextureFormat::
         // }
         let row_bytes = (bpp * texture.width()) as u64;
         let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64;
         let padding = (alignment - row_bytes % alignment) % alignment;
+        dbg!(padding);
         let padded_row_bytes = row_bytes + padding;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CPU Buffer"),
@@ -620,9 +642,27 @@ impl Renderer {
         .unwrap();
         Ok(image)
     }
+    pub fn read_depth(&self) -> Result<ImageBuffer<Luma<u16>, Vec<u16>>, Box<dyn std::error::Error>> {
+        let buf = unsafe {
+        let read_texture = &self.read_texture(&self.target_depth.texture)?;
+        let (l, buf, r) = read_texture.align_to::<f32>();
+        assert!(l.is_empty() && r.is_empty());
+            buf.to_owned()
+        };
+        let reduced_buf = buf.iter().map(|f| (f * 65535.0) as u16).collect();
+        dbg!(buf.len(), self.target_depth.texture.width() * self.target_depth.texture.height());
+        let image: ImageBuffer<Luma<u16>, Vec<u16>> = ImageBuffer::from_vec(
+            self.target_depth.texture.width(),
+            self.target_depth.texture.height(),
+            reduced_buf,
+        ).unwrap();
+        Ok(image)
+    }
     pub fn save_screenshot(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let image = self.read_front_buffer()?;
+        let depth = self.read_depth()?;
         image.save(path)?;
+        depth.save("depthscreenshot.png")?;
         Ok(())
     }
 }
