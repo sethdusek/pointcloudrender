@@ -1,5 +1,5 @@
 # Point Cloud Render
-WGPU-based renderer for images + depth maps that allows you to view the model from arbitrary positions. Example:
+GPU-accelerated renderer for images + depth maps that allows you to view the model from arbitrary positions. Example:
 
 |Image|Depth Map|
 |-----|---------|
