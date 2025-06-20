@@ -177,12 +177,14 @@ impl Renderer {
         } else {
             None
         };
+
         let texture_format = head_state
             .as_ref()
             .map(|hs| hs.surface_config.format)
             .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
+
         // Generate buffers and other on-device resources
-        let vertex_buffer = Renderer::load_image(&device, image, depth);
+        let vertex_buffer = Renderer::load_image(&device, &image, &depth);
         let (view_params, camera_buffer) = Renderer::create_camera_buffer(&device);
         let now = std::time::Instant::now();
         let (camera_bind_group, render_pipeline) = Renderer::create_pipeline(
@@ -191,6 +193,7 @@ impl Renderer {
             texture_format,
             DEPTH_STORAGE_FORMAT,
         );
+
         eprintln!(
             "Time to create render pipeline: {:?}",
             std::time::Instant::now() - now
@@ -206,14 +209,16 @@ impl Renderer {
                 | wgpu::TextureUsages::COPY_DST,
             "Render Buffer",
         );
+
         let target_depth = Texture::new(
             &device,
             size,
             DEPTH_STORAGE_FORMAT,
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            "Depth Render Buffer",
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
+            "Depth Render/Compute Buffer",
         );
 
         let depth_texture = Texture::new(
@@ -233,6 +238,7 @@ impl Renderer {
         } else {
             None
         };
+
         let occlusion_shader = if occlusion_filling {
             Some(FillingShader::new(
                 &device,
@@ -264,8 +270,8 @@ impl Renderer {
 
     fn load_image(
         device: &wgpu::Device,
-        image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-        depth: ImageBuffer<Luma<u8>, Vec<u8>>,
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+        depth: &ImageBuffer<Luma<u8>, Vec<u8>>,
     ) -> wgpu::Buffer {
         let dims = image.dimensions();
         assert_eq!(image.dimensions(), depth.dimensions());
@@ -327,7 +333,6 @@ impl Renderer {
         depth_format: wgpu::TextureFormat,
     ) -> (wgpu::BindGroup, wgpu::RenderPipeline) {
         let raster_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/raster.wgsl"));
-
         let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Camera Bindgroup Layout"),
@@ -414,6 +419,7 @@ impl Renderer {
             bytemuck::cast_slice(&[view_uniform]),
         );
     }
+
     pub fn render(
         &mut self,
         background_filling_toggle: bool,
@@ -431,6 +437,7 @@ impl Renderer {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Point Cloud Render Encoder"),
                 });
+
         {
             let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Clear"),
@@ -481,6 +488,7 @@ impl Renderer {
                 0..1,
             );
         }
+
         let mut output_texture = &self.target_texture;
         let mut output_depth = &self.target_depth;
 
@@ -516,6 +524,7 @@ impl Renderer {
             &self.target_texture.texture
         };
 
+        // Copy final render result either to frontbuffer or in self.target_texture (for headless)
         command_encoder.copy_texture_to_texture(
             wgpu::ImageCopyTexture {
                 texture: &output_texture.texture,
@@ -535,9 +544,27 @@ impl Renderer {
                 depth_or_array_layers: 1,
             },
         );
+        command_encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: &output_depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: &self.target_depth.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: dst.width(),
+                height: dst.height(),
+                depth_or_array_layers: 1,
+            },
+        );
         self.queue.submit(std::iter::once(command_encoder.finish()));
 
-        // TODO: clean up this mess
         if let Some(output) = output {
             output.present();
         }
@@ -546,12 +573,14 @@ impl Renderer {
 
     fn read_texture(&self, texture: &wgpu::Texture) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let bpp = texture.format().block_size(None).unwrap();
+        dbg!(bpp);
         // let bpp = match texture.format() {
         //     wgpu::TextureFormat::
         // }
         let row_bytes = (bpp * texture.width()) as u64;
         let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64;
         let padding = (alignment - row_bytes % alignment) % alignment;
+        dbg!(padding);
         let padded_row_bytes = row_bytes + padding;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CPU Buffer"),
@@ -602,6 +631,7 @@ impl Renderer {
 
         Ok(output_buffer)
     }
+
     pub fn read_front_buffer(
         &self,
     ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
@@ -620,9 +650,34 @@ impl Renderer {
         .unwrap();
         Ok(image)
     }
+
+    pub fn read_depth(
+        &self,
+    ) -> Result<ImageBuffer<Luma<u16>, Vec<u16>>, Box<dyn std::error::Error>> {
+        let buf = unsafe {
+            let read_texture = &self.read_texture(&self.target_depth.texture)?;
+            let (l, buf, r) = read_texture.align_to::<f32>();
+            assert!(l.is_empty() && r.is_empty());
+            buf.to_owned()
+        };
+        let reduced_buf = buf.iter().map(|f| (f * 65535.0) as u16).collect();
+        dbg!(
+            buf.len(),
+            self.target_depth.texture.width() * self.target_depth.texture.height()
+        );
+        let image: ImageBuffer<Luma<u16>, Vec<u16>> = ImageBuffer::from_vec(
+            self.target_depth.texture.width(),
+            self.target_depth.texture.height(),
+            reduced_buf,
+        )
+        .unwrap();
+        Ok(image)
+    }
     pub fn save_screenshot(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let image = self.read_front_buffer()?;
+        let depth = self.read_depth()?;
         image.save(path)?;
+        depth.save("depthscreenshot.png")?;
         Ok(())
     }
 }
