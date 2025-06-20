@@ -3,10 +3,7 @@ use image::{io::Reader as ImageReader, ImageBuffer, Luma, Rgba};
 
 use clap::Parser;
 use nalgebra::Vector3;
-use winit::{
-    event::{Event, WindowEvent},
-    window::Window,
-};
+use winit::event::{Event, WindowEvent};
 
 mod filling_shader;
 mod headless;
